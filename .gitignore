@@ -1,0 +1,18 @@
+node_modules/
+# React Native / Expo files
+.expo/
+android/
+ios/
+# Vite/Next artifacts
+dist/
+build/
+web/.next/
+web/node_modules/
+web/tmp/
+# hidden system files
+.DS_Store
+Thumbs.db
+# Embedded subrepos should be managed as submodules not tracked
+GyanBrige/
+web/
+
