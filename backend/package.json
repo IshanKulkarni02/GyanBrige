@@ -1,0 +1,27 @@
+{
+  "name": "gyanbrige-transcription-server",
+  "version": "1.0.0",
+  "description": "Transcription API server using OpenAI Whisper for GyanBrige",
+  "main": "transcriptionServer.js",
+  "scripts": {
+    "start": "node transcriptionServer.js",
+    "dev": "nodemon transcriptionServer.js"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "fluent-ffmpeg": "^2.1.3",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^2.7.0",
+    "openai": "^4.28.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

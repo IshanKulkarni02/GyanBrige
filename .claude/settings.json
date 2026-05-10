@@ -1,0 +1,67 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f 'd:/projects/GyanBrige/wiki-vault/wiki/hot.md' ] && cat 'd:/projects/GyanBrige/wiki-vault/wiki/hot.md' || true"
+          },
+          {
+            "type": "prompt",
+            "prompt": "You have a persistent wiki knowledge base for this project at d:/projects/GyanBrige/wiki-vault/. Silently read the hot cache that was just printed (wiki/hot.md) to restore recent context. Do not announce this. Do not summarize what you read. Just have the context available. If hot.md was empty or missing, proceed normally."
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f 'd:/projects/GyanBrige/wiki-vault/wiki/hot.md' ] && cat 'd:/projects/GyanBrige/wiki-vault/wiki/hot.md' || true"
+          },
+          {
+            "type": "prompt",
+            "prompt": "Context was just compacted. The hot cache was re-printed above. Silently re-absorb it to restore your working memory. Do not announce this."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd 'd:/projects/GyanBrige/wiki-vault' && [ -d .git ] && git add wiki/ .raw/ .vault-meta/ 2>/dev/null && (git diff --cached --quiet || git commit -m \"wiki: auto-commit $(date '+%Y-%m-%d %H:%M')\" 2>/dev/null) || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "WIKI='d:/projects/GyanBrige/wiki-vault' && cd \"$WIKI\" && [ -d wiki ] && [ -d .git ] && git diff --name-only HEAD 2>/dev/null | grep -q '^wiki/' && echo 'WIKI_CHANGED: Wiki pages were modified this session. Please update wiki/hot.md with a brief summary of what changed (under 500 words). Format: Last Updated, Key Recent Facts, Recent Changes, Active Threads. Overwrite the file completely. It is a rolling cache, not a journal.' || true"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(cat:d:/projects/GyanBrige/wiki-vault/wiki/*)",
+      "Bash(cat:d:/projects/GyanBrige/wiki-vault/wiki/**/*)",
+      "Read(d:/projects/GyanBrige/wiki-vault/**)",
+      "Write(d:/projects/GyanBrige/wiki-vault/wiki/**)",
+      "Write(d:/projects/GyanBrige/wiki-vault/.raw/**)",
+      "Write(d:/projects/GyanBrige/wiki-vault/.vault-meta/**)",
+      "Bash(git:d:/projects/GyanBrige/wiki-vault)"
+    ]
+  }
+}
