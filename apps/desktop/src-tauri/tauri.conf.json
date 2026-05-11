@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "GyanBrige",
+  "version": "0.1.0",
+  "identifier": "com.gyanbrige.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm --filter @gyanbrige/app web",
+    "devUrl": "http://localhost:8081",
+    "beforeBuildCommand": "pnpm --filter @gyanbrige/app export:web",
+    "frontendDist": "../../app/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "GyanBrige",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 640
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "dmg", "appimage"],
+    "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"]
+  }
+}

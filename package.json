@@ -1,0 +1,30 @@
+{
+  "name": "gyanbrige",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GyanBrige — self-hosted college LMS. Live classes, AI notes, attendance, tests, assignments, community.",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20.10.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "db:migrate": "pnpm --filter @gyanbrige/api db:migrate",
+    "db:seed": "pnpm --filter @gyanbrige/api db:seed",
+    "db:studio": "pnpm --filter @gyanbrige/api db:studio",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "infra:logs": "docker compose -f infra/docker-compose.yml logs -f"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.6.3"
+  }
+}

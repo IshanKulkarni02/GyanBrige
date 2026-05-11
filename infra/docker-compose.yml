@@ -1,0 +1,94 @@
+version: '3.9'
+
+# GyanBrige dev infrastructure. One college per host.
+# Bring up: pnpm infra:up
+# Services run on the host (pnpm dev). This compose file is data + LiveKit only.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gyanbrige-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gyanbrige
+      POSTGRES_PASSWORD: gyanbrige
+      POSTGRES_DB: gyanbrige
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U gyanbrige']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    container_name: gyanbrige-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: gyanbrige
+      MONGO_INITDB_ROOT_PASSWORD: gyanbrige
+      MONGO_INITDB_DATABASE: gyanbrige
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo_data:/data/db
+      - ./mongo/init:/docker-entrypoint-initdb.d:ro
+
+  redis:
+    image: redis:7-alpine
+    container_name: gyanbrige-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: minio/minio:latest
+    container_name: gyanbrige-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: gyanbrige
+      MINIO_ROOT_PASSWORD: gyanbrige-secret-change
+    command: server /data --console-address ':9001'
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set local http://minio:9000 gyanbrige gyanbrige-secret-change;
+      mc mb --ignore-existing local/gyanbrige;
+      mc anonymous set download local/gyanbrige;
+      exit 0;
+      "
+
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: gyanbrige-livekit
+    restart: unless-stopped
+    command: ['--config', '/etc/livekit.yaml']
+    ports:
+      - '7880:7880'
+      - '7881:7881'
+      - '7882:7882/udp'
+    volumes:
+      - ../infra/livekit/livekit.yaml:/etc/livekit.yaml:ro
+
+volumes:
+  postgres_data:
+  mongo_data:
+  redis_data:
+  minio_data:

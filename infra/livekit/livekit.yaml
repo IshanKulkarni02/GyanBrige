@@ -1,0 +1,12 @@
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+keys:
+  devkey: devsecret-change-me-32-characters-min
+webhook:
+  api_key: devkey
+  urls:
+    - http://host.docker.internal:4001/api/livekit/egress
+log_level: info

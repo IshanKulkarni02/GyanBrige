@@ -1,0 +1,30 @@
+{
+  "D:\\projects\\gayn brigr 2\\GyanBrige\\backend\\transcriptionServer.js": {
+    "mtime": 1778444586.6248133,
+    "hash": "2ba90d150f9c9ed2d98cd62cf04bd0a4"
+  },
+  "D:\\projects\\gayn brigr 2\\GyanBrige\\backend\\services\\jobManager.js": {
+    "mtime": 1778444586.62384,
+    "hash": "3275b0ca9cc0db1455fa36d47dd3ba49"
+  },
+  "D:\\projects\\gayn brigr 2\\GyanBrige\\backend\\services\\lectureProcessor.js": {
+    "mtime": 1778444586.62384,
+    "hash": "68d874094cb492e5e23faa1b4de245a2"
+  },
+  "D:\\projects\\gayn brigr 2\\GyanBrige\\backend\\services\\noteGenerator.js": {
+    "mtime": 1778444586.6248133,
+    "hash": "145cc23fb02e4d4bb5bc5113ff15df1a"
+  },
+  "D:\\projects\\gayn brigr 2\\GyanBrige\\backend\\services\\videoProcessor.js": {
+    "mtime": 1778444586.6248133,
+    "hash": "e351048d5b7f541aad5e8faae602a119"
+  },
+  "D:\\projects\\gayn brigr 2\\CLAUDE.md": {
+    "mtime": 1778444447.8659744,
+    "hash": "747e73a5e1af4b72c0d65c9169c23199"
+  },
+  "D:\\projects\\gayn brigr 2\\GyanBrige\\CLAUDE.md": {
+    "mtime": 1778444586.6064212,
+    "hash": "1369610153ed31e62b6cfc19a1f01873"
+  }
+}
