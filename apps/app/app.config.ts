@@ -5,7 +5,6 @@ const config: ExpoConfig = {
   slug: 'gyanbrige',
   version: '0.1.0',
   orientation: 'portrait',
-  icon: './assets/icon.png',
   scheme: 'gyanbrige',
   userInterfaceStyle: 'automatic',
   ios: {
@@ -33,7 +32,6 @@ const config: ExpoConfig = {
   web: {
     bundler: 'metro',
     output: 'static',
-    favicon: './assets/favicon.png',
   },
   plugins: ['expo-router', 'expo-secure-store'],
   experiments: { typedRoutes: true },

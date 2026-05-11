@@ -27,5 +27,14 @@
     "active": true,
     "targets": ["nsis", "dmg", "appimage"],
     "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://gyanbrige.example.org/desktop-updates/{{target}}/{{current_version}}"
+      ],
+      "pubkey": "REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY"
+    }
   }
 }

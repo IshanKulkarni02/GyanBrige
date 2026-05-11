@@ -13,7 +13,10 @@ export interface NfcReadResult {
 
 export async function readNfcOnce(): Promise<NfcReadResult> {
   if (isTauri) {
-    const { invoke } = await import('@tauri-apps/api/core').catch(() => ({ invoke: null as never }));
+    // Read invoke off the global Tauri runtime exposed in the desktop shell;
+    // we never `import('@tauri-apps/...')` here so Metro doesn't try to bundle it.
+    const tauri = (globalThis as { __TAURI__?: { core?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } } }).__TAURI__;
+    const invoke = tauri?.core?.invoke;
     if (!invoke) throw new Error('Tauri runtime missing');
     const uid = (await invoke('read_nfc_once', {})) as string;
     return { source: 'desktop', payload: uid };

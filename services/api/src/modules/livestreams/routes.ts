@@ -5,6 +5,7 @@ import { prisma } from '../../db.js';
 import { requireAuth, requireRole } from '../../lib/role-guard.js';
 import { AppError } from '../../plugins/errors.js';
 import { ensureRoom, mintAccessToken, startRecording, stopRecording } from '../../lib/livekit.js';
+import { canAttendOnline } from '../../lib/cap-enforcer.js';
 import { env } from '../../env.js';
 
 const tokenSchema = z.object({ lectureId: z.string().uuid() });
@@ -67,7 +68,18 @@ export const registerLivestreams: FastifyPluginAsync = async (app) => {
     if (!isTeacher && !isStudent && !me.roles.includes(Role.ADMIN))
       throw new AppError(403, 'FORBIDDEN', 'Not enrolled');
 
-    // Cap enforcement runs in Phase 4. Token mint will call cap-enforcer at that point.
+    if (!isTeacher && !me.roles.includes(Role.ADMIN)) {
+      const decision = await canAttendOnline(me.id, lecture.course.subject.id);
+      if (!decision.allowed) {
+        throw new AppError(
+          403,
+          'ONLINE_CAP_EXCEEDED',
+          `Online cap exceeded (${decision.reason}). Used ${decision.subjectUsed ?? decision.globalUsed} of ${decision.subjectLimit ?? decision.globalLimit}.`,
+          decision,
+        );
+      }
+    }
+
     const token = await mintAccessToken({
       identity: me.id,
       name: me.email ?? me.id,
