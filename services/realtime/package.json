@@ -10,21 +10,21 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "fastify": "^4.28.1",
-    "ioredis": "^5.4.1",
-    "jsonwebtoken": "^9.0.2",
-    "mongodb": "^6.10.0",
-    "socket.io": "^4.8.1",
-    "socket.io-redis-adapter": "^8.3.0",
-    "ulid": "^2.3.0",
-    "y-protocols": "^1.0.6",
-    "yjs": "^13.6.20",
-    "zod": "^3.23.8"
+    "fastify": "^5.8.5",
+    "ioredis": "^5.10.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongodb": "^7.2.0",
+    "socket.io": "^4.8.3",
+    "socket.io-redis-adapter": "^8.4.6",
+    "ulid": "^3.0.2",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.30",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/jsonwebtoken": "^9.0.7",
-    "@types/node": "^22.9.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^25.7.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
   }
 }

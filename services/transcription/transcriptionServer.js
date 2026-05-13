@@ -17,6 +17,7 @@ const noteGenerator = require('./services/noteGenerator');
 const lectureProcessor = require('./services/lectureProcessor');
 const jobManager = require('./services/jobManager');
 const livekitEgress = require('./services/livekitEgress');
+const lectureEditor = require('./services/lectureEditor');
 
 const app = express();
 const PORT = process.env.PORT || process.env.TRANSCRIPTION_PORT || 4001;
@@ -645,6 +646,52 @@ app.post('/api/livekit/egress', express.json({ limit: '2mb' }), async (req, res)
   } catch (error) {
     console.error('[livekit/egress] error:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/lectures/auto-edit
+ * Run silence + filler-word detection on a video and produce a tighter cut.
+ * Body: { videoPath, segments?: [{start,end,text}] }
+ */
+app.post('/api/lectures/auto-edit', express.json({ limit: '5mb' }), async (req, res) => {
+  try {
+    const { videoPath, segments } = req.body || {};
+    if (!videoPath) return res.status(400).json({ error: 'videoPath required' });
+    const result = await lectureEditor.autoEdit({ videoPath, segments: segments || [] });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[auto-edit]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/lectures/detect-chapters
+ * Cheap chapter detection from transcript segments without embeddings:
+ * topic shifts marked by gaps > 4s + sentence-final markers.
+ */
+app.post('/api/lectures/detect-chapters', express.json({ limit: '5mb' }), (req, res) => {
+  try {
+    const { segments } = req.body || {};
+    if (!Array.isArray(segments) || segments.length === 0) {
+      return res.json({ chapters: [] });
+    }
+    const chapters = [{ startSec: segments[0].start, title: 'Introduction' }];
+    let lastEnd = segments[0].end;
+    for (let i = 1; i < segments.length; i++) {
+      const seg = segments[i];
+      const gap = seg.start - lastEnd;
+      const sentenceEnd = /[.!?]\s*$/.test(segments[i - 1].text || '');
+      if (gap > 4 || (sentenceEnd && (seg.start - chapters[chapters.length - 1].startSec) > 90)) {
+        const title = (seg.text || '').split(/[.?!]/)[0].slice(0, 70).trim();
+        chapters.push({ startSec: seg.start, title: title || `Topic ${chapters.length + 1}` });
+      }
+      lastEnd = seg.end;
+    }
+    res.json({ chapters });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

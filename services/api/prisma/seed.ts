@@ -68,10 +68,12 @@ async function main() {
     },
   });
 
+  // Default new installs to local Ollama for data sovereignty.
+  // Admin can flip back to OpenAI via /admin/ai-settings.
   await prisma.aiSettings.upsert({
     where: { id: 'singleton' },
     update: {},
-    create: { id: 'singleton' },
+    create: { id: 'singleton', notesBackend: 'OLLAMA', whisperBackend: 'OLLAMA' },
   });
 
   console.log('seed complete: admin@gyanbrige.local / admin1234');

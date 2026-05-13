@@ -19,6 +19,7 @@ import { registerAudit } from './modules/audit/routes.js';
 import { registerInvites } from './modules/invites/routes.js';
 import { registerSisImport } from './modules/admin/sis-import/routes.js';
 import { registerLectures } from './modules/lectures/routes.js';
+import { registerLectureEditing } from './modules/lectures/edit.js';
 import { registerLivestreams } from './modules/livestreams/routes.js';
 import { registerNotes } from './modules/notes/routes.js';
 import { registerAiSettings } from './modules/admin/ai-settings/routes.js';
@@ -79,6 +80,7 @@ async function main() {
   await app.register(registerAudit, { prefix: '/api/audit' });
   await app.register(registerSisImport, { prefix: '/api/admin/sis-import' });
   await app.register(registerLectures, { prefix: '/api/lectures' });
+  await app.register(registerLectureEditing, { prefix: '/api/lectures' });
   await app.register(registerLivestreams, { prefix: '/api/livestreams' });
   await app.register(registerNotes, { prefix: '/api/notes' });
   await app.register(registerAiSettings, { prefix: '/api/admin/ai-settings' });
