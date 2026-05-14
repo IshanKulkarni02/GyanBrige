@@ -28,6 +28,7 @@ export default function Dashboard() {
     { href: '/(app)/study-plan', title: 'Study plan', desc: 'This week, tailored to you', tag: 'Plan' },
     { href: '/(app)/flashcards', title: 'Flashcards', desc: 'Daily review (SM-2)', tag: 'Practice' },
     { href: '/(app)/assignments', title: 'Assignments', desc: 'Submit and track', tag: 'Tasks' },
+    { href: '/(app)/tests/index', title: 'Tests', desc: 'Take exams', tag: 'Exams' },
     { href: '/(app)/results', title: 'Results', desc: 'Grades + GPA', tag: 'Records' },
     { href: '/(app)/attendance', title: 'Attendance', desc: 'Tap in, view history', tag: 'Daily' },
     { href: '/(app)/notices', title: 'Notice board', desc: 'College + course updates', tag: 'News' },
@@ -43,6 +44,14 @@ export default function Dashboard() {
     { href: '/(app)/settings/appearance', title: 'Appearance', desc: 'Light / dark / system', tag: 'Settings' },
     { href: '/(app)/settings/a11y', title: 'Accessibility', desc: 'Font, contrast, dyslexia mode', tag: 'Settings' },
     { href: '/(app)/guide', title: 'How to use', desc: 'In-app guide', tag: 'Help' },
+  ];
+
+  const teacherTiles: Tile[] = [
+    { href: '/(app)/lectures', title: 'Lectures', desc: 'Create + go live', tag: 'Teach', tone: 'accent' },
+    { href: '/(app)/courses', title: 'My courses', desc: 'Enroll students + manage', tag: 'Teach' },
+    { href: '/(app)/assignments', title: 'Assignments', desc: 'Set + grade work', tag: 'Teach' },
+    { href: '/(app)/tests/index', title: 'Tests', desc: 'Create + proctor exams', tag: 'Teach' },
+    { href: '/(app)/attendance', title: 'Attendance', desc: 'Mark + review', tag: 'Teach' },
   ];
 
   const adminTiles: Tile[] = [
@@ -98,13 +107,26 @@ export default function Dashboard() {
           ))}
         </View>
 
-        {(isAdmin || isTeacher) && (
+        {isTeacher && !isAdmin && (
+          <View style={{ marginTop: spacing.lg, gap: spacing.md }}>
+            <Text style={{ ...typography.h2, color: c.text }}>Teaching</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
+              {teacherTiles.map((t) => (
+                <View key={t.href} style={{ width: '48%', minWidth: 260, flexGrow: 1 }}>
+                  <Card title={t.title} description={t.desc} tag={t.tag} href={t.href} tone={t.tone} />
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {isAdmin && (
           <View style={{ marginTop: spacing.lg, gap: spacing.md }}>
             <Text style={{ ...typography.h2, color: c.text }}>Workspace</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
-              {adminTiles.map((t) => (
+              {[...teacherTiles, ...adminTiles].map((t) => (
                 <View key={t.href} style={{ width: '48%', minWidth: 260, flexGrow: 1 }}>
-                  <Card title={t.title} description={t.desc} tag={t.tag} href={t.href} />
+                  <Card title={t.title} description={t.desc} tag={t.tag} href={t.href} tone={t.tone} />
                 </View>
               ))}
             </View>

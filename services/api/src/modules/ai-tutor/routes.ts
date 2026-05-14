@@ -3,6 +3,7 @@
 
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { Role } from '@prisma/client';
 import { prisma } from '../../db.js';
 import { env } from '../../env.js';
 import { requireAuth } from '../../lib/role-guard.js';
@@ -37,16 +38,26 @@ export const registerAiTutor: FastifyPluginAsync = async (app) => {
     const me = await requireAuth(req);
     const body = askSchema.parse(req.body);
 
-    const enrolled = await prisma.enrollment.findMany({
-      where: { userId: me.id },
-      select: { courseId: true },
-    });
-    const allowedCourses = enrolled.map((e) => e.courseId);
-    const courseIds = body.courseIds
-      ? body.courseIds.filter((c) => allowedCourses.includes(c))
-      : allowedCourses;
-    if (courseIds.length === 0) {
-      throw new AppError(403, 'NO_COURSES', 'Enroll in a course before asking the tutor');
+    const isAdmin = me.roles.includes(Role.ADMIN) || me.roles.includes(Role.STAFF);
+
+    let courseIds: string[];
+    if (isAdmin) {
+      const all = await prisma.course.findMany({ select: { id: true } });
+      courseIds = body.courseIds ?? all.map((c) => c.id);
+    } else {
+      const enrolled = await prisma.enrollment.findMany({
+        where: { userId: me.id },
+        select: { courseId: true },
+      });
+      const teaching = await prisma.course.findMany({
+        where: { teachers: { some: { id: me.id } } },
+        select: { id: true },
+      });
+      const allowed = [...new Set([...enrolled.map((e) => e.courseId), ...teaching.map((c) => c.id)])];
+      courseIds = body.courseIds ? body.courseIds.filter((c) => allowed.includes(c)) : allowed;
+      if (courseIds.length === 0) {
+        throw new AppError(403, 'NO_COURSES', 'Enroll in a course before asking the tutor');
+      }
     }
 
     const hits = await retrieve(body.question, courseIds, 6);

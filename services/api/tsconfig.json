@@ -15,11 +15,7 @@
     "noUncheckedIndexedAccess": true,
     "verbatimModuleSyntax": false,
     "declaration": false,
-    "sourceMap": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    }
+    "sourceMap": true
   },
   "include": ["src/**/*.ts", "prisma/**/*.ts"],
   "exclude": ["dist", "node_modules"]

@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import argon2 from 'argon2';
 import { Role } from '@prisma/client';
 import { prisma } from '../../db.js';
 import { requireAuth, requireRole } from '../../lib/role-guard.js';
@@ -16,7 +17,32 @@ const updateRolesSchema = z.object({
   roles: z.array(z.object({ role: z.nativeEnum(Role), scopeId: z.string().optional() })),
 });
 
+const createUserSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(2),
+  password: z.string().min(8),
+  role: z.nativeEnum(Role).default(Role.STUDENT),
+  scopeId: z.string().uuid().optional(),
+});
+
 export const registerUsers: FastifyPluginAsync = async (app) => {
+  app.post('/', async (req) => {
+    await requireRole(req, Role.ADMIN, Role.STAFF);
+    const body = createUserSchema.parse(req.body);
+    const existing = await prisma.user.findUnique({ where: { email: body.email } });
+    if (existing) throw new AppError(409, 'EMAIL_TAKEN', 'Email already registered');
+    const hashedPassword = await argon2.hash(body.password);
+    return prisma.user.create({
+      data: {
+        email: body.email,
+        name: body.name,
+        hashedPassword,
+        roles: { create: { role: body.role, scopeId: body.scopeId ?? null } },
+      },
+      select: { id: true, email: true, name: true, roles: { select: { role: true } } },
+    });
+  });
+
   app.get('/', async (req) => {
     await requireRole(req, Role.ADMIN, Role.STAFF, Role.TEACHER);
     const q = listQuery.parse(req.query);

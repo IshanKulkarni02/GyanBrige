@@ -1,7 +1,16 @@
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, Role } from '@prisma/client';
 import argon2 from 'argon2';
+import pg from 'pg';
+import { config as loadDotenv } from 'dotenv';
+import path from 'node:path';
+import fs from 'node:fs';
 
-const prisma = new PrismaClient();
+const candidates = [path.resolve(process.cwd(), '.env'), path.resolve(process.cwd(), '../../.env')];
+for (const p of candidates) { if (fs.existsSync(p)) { loadDotenv({ path: p }); break; } }
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
 async function main() {
   const college = await prisma.college.upsert({
@@ -57,7 +66,7 @@ async function main() {
     },
   });
 
-  await prisma.course.upsert({
+  const course = await prisma.course.upsert({
     where: { subjectId_semester_year: { subjectId: subject.id, semester: 1, year: 2026 } },
     update: {},
     create: {
@@ -68,6 +77,23 @@ async function main() {
     },
   });
 
+  const student = await prisma.user.upsert({
+    where: { email: 'student@gyanbrige.local' },
+    update: {},
+    create: {
+      email: 'student@gyanbrige.local',
+      name: 'Student One',
+      hashedPassword: await argon2.hash('student1234'),
+      roles: { create: { role: Role.STUDENT } },
+    },
+  });
+
+  await prisma.enrollment.upsert({
+    where: { userId_courseId: { userId: student.id, courseId: course.id } },
+    update: {},
+    create: { userId: student.id, courseId: course.id },
+  });
+
   // Default new installs to local Ollama for data sovereignty.
   // Admin can flip back to OpenAI via /admin/ai-settings.
   await prisma.aiSettings.upsert({
@@ -76,7 +102,10 @@ async function main() {
     create: { id: 'singleton', notesBackend: 'OLLAMA', whisperBackend: 'OLLAMA' },
   });
 
-  console.log('seed complete: admin@gyanbrige.local / admin1234');
+  console.log('seed complete:');
+  console.log('  admin@gyanbrige.local   / admin1234');
+  console.log('  teacher@gyanbrige.local / teacher1234');
+  console.log('  student@gyanbrige.local / student1234  (enrolled in CSE101)');
 }
 
 main()
