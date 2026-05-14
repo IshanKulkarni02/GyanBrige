@@ -1,0 +1,45 @@
+[
+  {
+    "id": "e1",
+    "userId": "u1",
+    "courseId": "c1",
+    "progress": 66,
+    "completedLectures": [
+      "l1",
+      "l2"
+    ],
+    "enrolledAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "e2",
+    "userId": "u1",
+    "courseId": "c2",
+    "progress": 50,
+    "completedLectures": [
+      "l4"
+    ],
+    "enrolledAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "e3",
+    "userId": "u4",
+    "courseId": "c1",
+    "progress": 33,
+    "completedLectures": [
+      "l1"
+    ],
+    "enrolledAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "e4",
+    "userId": "u5",
+    "courseId": "c1",
+    "progress": 100,
+    "completedLectures": [
+      "l1",
+      "l2",
+      "l3"
+    ],
+    "enrolledAt": "2026-05-14T07:21:50.878Z"
+  }
+]

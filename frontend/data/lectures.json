@@ -1,0 +1,52 @@
+[
+  {
+    "id": "l1",
+    "courseId": "c1",
+    "title": "Introduction to Algebra",
+    "description": "Basic algebraic concepts",
+    "duration": 45,
+    "notes": "# Algebra Basics\n\n- Variables and constants\n- Linear equations\n- Quadratic equations",
+    "order": 1,
+    "createdAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "l2",
+    "courseId": "c1",
+    "title": "Calculus Fundamentals",
+    "description": "Limits and derivatives",
+    "duration": 50,
+    "notes": "# Calculus\n\n- Understanding limits\n- Derivatives\n- Integration basics",
+    "order": 2,
+    "createdAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "l3",
+    "courseId": "c1",
+    "title": "Geometry Basics",
+    "description": "Shapes and theorems",
+    "duration": 40,
+    "notes": "# Geometry\n\n- Types of angles\n- Triangles\n- Circles",
+    "order": 3,
+    "createdAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "l4",
+    "courseId": "c2",
+    "title": "Laws of Motion",
+    "description": "Newton's three laws",
+    "duration": 55,
+    "notes": "# Newton's Laws\n\n1. First Law (Inertia)\n2. Second Law (F=ma)\n3. Third Law (Action-Reaction)",
+    "order": 1,
+    "createdAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "l5",
+    "courseId": "c2",
+    "title": "Thermodynamics",
+    "description": "Heat and energy",
+    "duration": 48,
+    "notes": "# Thermodynamics\n\n- Heat transfer\n- Laws of thermodynamics\n- Entropy",
+    "order": 2,
+    "createdAt": "2026-05-14T07:21:50.878Z"
+  }
+]

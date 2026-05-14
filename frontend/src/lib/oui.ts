@@ -1,0 +1,358 @@
+// Compact OUI (MAC vendor) lookup — first 6 hex chars → manufacturer
+// Covers common phones and laptops. Not exhaustive — unknown OUIs return "Unknown Device".
+
+const OUI_MAP: Record<string, string> = {
+  // Apple
+  "001124": "Apple","001451": "Apple","0016cb": "Apple","0017f2": "Apple","0019e3": "Apple",
+  "001b63": "Apple","001cb3": "Apple","001d4f": "Apple","001e52": "Apple","001ec2": "Apple",
+  "001f5b": "Apple","001ff3": "Apple","0021e9": "Apple","002241": "Apple","002312": "Apple",
+  "002332": "Apple","00236c": "Apple","0023df": "Apple","002436": "Apple","002500": "Apple",
+  "00254b": "Apple","0025bc": "Apple","002608": "Apple","00264a": "Apple","0026b9": "Apple",
+  "0026bb": "Apple","003065": "Apple","005a81": "Apple","00f4b9": "Apple","040cce": "Apple",
+  "041552": "Apple","041e64": "Apple","042665": "Apple","04489a": "Apple","044bed": "Apple",
+  "0452f3": "Apple","045453": "Apple","0469f8": "Apple","04d3cf": "Apple","04db56": "Apple",
+  "04e536": "Apple","04f13e": "Apple","04f7e4": "Apple","086d41": "Apple","087045": "Apple",
+  "087402": "Apple","08f4ab": "Apple","0c1dcf": "Apple","0c3e9f": "Apple","0c4de9": "Apple",
+  "0c5101": "Apple","0c74c2": "Apple","0c771a": "Apple","0cbd9f": "Apple","0cd746": "Apple",
+  "1009a0": "Apple","1040f3": "Apple","10417f": "Apple","109add": "Apple","10ddb1": "Apple",
+  "14109f": "Apple","145a05": "Apple","148fc6": "Apple","1499e2": "Apple","14bd61": "Apple",
+  "182032": "Apple","183451": "Apple","186590": "Apple","189efc": "Apple","18af61": "Apple",
+  "1c1ac0": "Apple","1c36bb": "Apple","1c5cf2": "Apple","1c9148": "Apple","2078f0": "Apple",
+  "20a2e4": "Apple","20c9d0": "Apple","241eeb": "Apple","24a074": "Apple","24ab81": "Apple",
+  "283737": "Apple","283b82": "Apple","286ab8": "Apple","28cfda": "Apple","2c200b": "Apple",
+  "2cb43a": "Apple","3010e4": "Apple","303590": "Apple","3035ad": "Apple","3090ab": "Apple",
+  "340836": "Apple","34159e": "Apple","34363b": "Apple","34a395": "Apple","34c059": "Apple",
+  "380f4a": "Apple","38484c": "Apple","38b54d": "Apple","38c986": "Apple","3c0754": "Apple",
+  "3c2ef9": "Apple","3cd0f8": "Apple","403cfc": "Apple","404d7f": "Apple","40a6d9": "Apple",
+  "40b395": "Apple","40bc60": "Apple","40cbc0": "Apple","40d32d": "Apple","44001o": "Apple",
+  "442a60": "Apple","444c0c": "Apple","44d884": "Apple","48437c": "Apple","48746e": "Apple",
+  "48a195": "Apple","4c57ca": "Apple","4c74bf": "Apple","4c8d79": "Apple","503237": "Apple",
+  "507a55": "Apple","50ead6": "Apple","542696": "Apple","5433cb": "Apple","544e90": "Apple",
+  "54724f": "Apple","54ae27": "Apple","581faa": "Apple","5855ca": "Apple","587f57": "Apple",
+  "58b035": "Apple","5c5948": "Apple","5c969d": "Apple","5cf938": "Apple","600308": "Apple",
+  "60334b": "Apple","606944": "Apple","60c547": "Apple","60d9c7": "Apple","60fb42": "Apple",
+  "64200c": "Apple","6476ba": "Apple","649abe": "Apple","64a3cb": "Apple","64b9e8": "Apple",
+  "685b35": "Apple","689c70": "Apple","68a86d": "Apple","68ab1e": "Apple","68d93c": "Apple",
+  "6c198f": "Apple","6c4008": "Apple","6c8dc1": "Apple","6c96cf": "Apple","7014a6": "Apple",
+  "703eac": "Apple","705681": "Apple","7073cb": "Apple","70a2b3": "Apple","70cd60": "Apple",
+  "70dee2": "Apple","70ece4": "Apple","741bb2": "Apple","74e1b6": "Apple","7831c1": "Apple",
+  "784f43": "Apple","7867d7": "Apple","786c1c": "Apple","787b8a": "Apple","78886d": "Apple",
+  "78d75f": "Apple","7c0191": "Apple","7c04d0": "Apple","7c6d62": "Apple","7cc3a1": "Apple",
+  "7cd1c3": "Apple","7cf05f": "Apple","80be05": "Apple","80d605": "Apple","842999": "Apple",
+  "84788b": "Apple","848506": "Apple","84a134": "Apple","84b153": "Apple","84fcac": "Apple",
+  "881fa1": "Apple","885395": "Apple","8863df": "Apple","8866a5": "Apple","88ae07": "Apple",
+  "8c006d": "Apple","8c5877": "Apple","8c7b9d": "Apple","8c8590": "Apple","903c92": "Apple",
+  "906001": "Apple","907240": "Apple","90840d": "Apple","908d6c": "Apple","90fd61": "Apple",
+  "94bf2d": "Apple","94e96a": "Apple","9801a7": "Apple","9810e8": "Apple","985aeb": "Apple",
+  "989e63": "Apple","98b8e3": "Apple","98d6bb": "Apple","9c04eb": "Apple","9c207b": "Apple",
+  "9c35eb": "Apple","9c84bf": "Apple","9cf48e": "Apple","a011da": "Apple","a03be3": "Apple",
+  "a056f3": "Apple","a0999b": "Apple","a0d099": "Apple","a45e60": "Apple","a46706": "Apple",
+  "a4b805": "Apple","a4c361": "Apple","a4d18c": "Apple","a82066": "Apple","a851ab": "Apple",
+  "a85c2c": "Apple","a8667f": "Apple","a886dd": "Apple","a88808": "Apple","a8968a": "Apple",
+  "a8fad8": "Apple","ac1f74": "Apple","ac3c0b": "Apple","ac61ea": "Apple","ac7f3e": "Apple",
+  "ac87a3": "Apple","acbc32": "Apple","b03495": "Apple","b065bd": "Apple","b09fba": "Apple",
+  "b0ab1e": "Apple","b418d1": "Apple","b44bd2": "Apple","b48b19": "Apple","b4f0ab": "Apple",
+  "b8098a": "Apple","b817c2": "Apple","b844d9": "Apple","b853ac": "Apple","b85e7b": "Apple",
+  "b8634d": "Apple","b8782e": "Apple","b88d12": "Apple","b8c111": "Apple","b8e856": "Apple",
+  "bc3baf": "Apple","bc4cc4": "Apple","bc52b7": "Apple","bc6778": "Apple","bc926b": "Apple",
+  "bca920": "Apple","bcecdf": "Apple","c06394": "Apple","c09f42": "Apple","c0cecd": "Apple",
+  "c0d012": "Apple","c42c03": "Apple","c4b301": "Apple","c82a14": "Apple","c8334b": "Apple",
+  "c83c85": "Apple","c86f1d": "Apple","c889f3": "Apple","c8bcc8": "Apple","c8d083": "Apple",
+  "cc29f5": "Apple","cc4463": "Apple","ccc760": "Apple","d0034b": "Apple","d023db": "Apple",
+  "d02598": "Apple","d04f7e": "Apple","d065ca": "Apple","d41d34": "Apple","d4619d": "Apple",
+  "d4909c": "Apple","d4f46f": "Apple","d4fb6a": "Apple","d8004d": "Apple","d81d72": "Apple",
+  "d83062": "Apple","d89695": "Apple","d8a25e": "Apple","d8bb2c": "Apple","d8cf9c": "Apple",
+  "d8d1cb": "Apple","dc0c5c": "Apple","dc2b2a": "Apple","dc3714": "Apple","dc9b9c": "Apple",
+  "e05f45": "Apple","e06678": "Apple","e0accb": "Apple","e0c767": "Apple","e425e7": "Apple",
+  "e48b7f": "Apple","e49a79": "Apple","e4c63d": "Apple","e4ce8f": "Apple","e80688": "Apple",
+  "e8802e": "Apple","e88d28": "Apple","ec3586": "Apple","ec852f": "Apple","f01898": "Apple",
+  "f099bf": "Apple","f0b479": "Apple","f0d1a9": "Apple","f0dce2": "Apple","f40669": "Apple",
+  "f41ba1": "Apple","f44b2a": "Apple","f45c89": "Apple","f4f951": "Apple","f80377": "Apple",
+  "f81edf": "Apple","f82793": "Apple","f84d89": "Apple","f8a9d0": "Apple","fc253f": "Apple",
+  "fce998": "Apple",
+  // Samsung
+  "0002e3": "Samsung","000278": "Samsung","0007ab": "Samsung","001247": "Samsung",
+  "0012fb": "Samsung","001599": "Samsung","0015b9": "Samsung","001632": "Samsung",
+  "00166b": "Samsung","00166c": "Samsung","0017c9": "Samsung","0017d5": "Samsung",
+  "0018af": "Samsung","001a8a": "Samsung","001b98": "Samsung","001c43": "Samsung",
+  "001d25": "Samsung","001e7d": "Samsung","001fcd": "Samsung","002119": "Samsung",
+  "002339": "Samsung","002454": "Samsung","002490": "Samsung","002538": "Samsung",
+  "002567": "Samsung","002637": "Samsung","00e3b2": "Samsung","00eebd": "Samsung",
+  "0808c2": "Samsung","08373d": "Samsung","0876ff": "Samsung","0c1420": "Samsung",
+  "0c715d": "Samsung","0c8910": "Samsung","101dc0": "Samsung","103047": "Samsung",
+  "10d542": "Samsung","1449bc": "Samsung","1489fd": "Samsung","14a364": "Samsung",
+  "18227e": "Samsung","183a2d": "Samsung","183da2": "Samsung","184617": "Samsung",
+  "1867b0": "Samsung","1c62b8": "Samsung","1caf05": "Samsung","1c66aa": "Samsung",
+  "2013e0": "Samsung","205531": "Samsung","206432": "Samsung","206e9c": "Samsung",
+  "244b03": "Samsung","24dbac": "Samsung","24ef8d": "Samsung","2827bf": "Samsung",
+  "28987b": "Samsung","28bab5": "Samsung","28cc01": "Samsung","2ca835": "Samsung",
+  "30074d": "Samsung","301966": "Samsung","3096fb": "Samsung","30cda7": "Samsung",
+  "34145f": "Samsung","342387": "Samsung","343111": "Samsung","34c3ac": "Samsung",
+  "380146": "Samsung","3816d1": "Samsung","3c5a37": "Samsung","3c8bfe": "Samsung",
+  "400e85": "Samsung","444e1a": "Samsung","44783e": "Samsung","48137e": "Samsung",
+  "4844f7": "Samsung","4ca56d": "Samsung","5001bb": "Samsung","503275": "Samsung",
+  "508569": "Samsung","50a4c8": "Samsung","50b7c3": "Samsung","50ccf8": "Samsung",
+  "50f520": "Samsung","5440ad": "Samsung","54880e": "Samsung","549b12": "Samsung",
+  "5849ba": "Samsung","5c3c27": "Samsung","5c4979": "Samsung","5c5188": "Samsung",
+  "5ca6e6": "Samsung","5cf6dc": "Samsung","606bbd": "Samsung","60a10a": "Samsung",
+  "60af6d": "Samsung","60d0a9": "Samsung","647791": "Samsung","64b310": "Samsung",
+  "682737": "Samsung","684898": "Samsung","6c8336": "Samsung","6cb7f4": "Samsung",
+  "6cf373": "Samsung","70f927": "Samsung","74458a": "Samsung","74e543": "Samsung",
+  "7825ad": "Samsung","78595e": "Samsung","78f882": "Samsung","7c0bc6": "Samsung",
+  "7c6193": "Samsung","7c9122": "Samsung","7cb27d": "Samsung","805719": "Samsung",
+  "84119e": "Samsung","84253f": "Samsung","849dc7": "Samsung","84a466": "Samsung",
+  "8843e1": "Samsung","888322": "Samsung","889b39": "Samsung","8c71f8": "Samsung",
+  "8cc8cd": "Samsung","90187c": "Samsung","90b686": "Samsung","940535": "Samsung","940abb": "Samsung",
+  "9463d1": "Samsung","9476b7": "Samsung","98523d": "Samsung","98ecac": "Samsung",
+  "9c65b0": "Samsung","9cb70d": "Samsung","a00798": "Samsung","a00bba": "Samsung",
+  "a02195": "Samsung","a45700": "Samsung","a4ebd3": "Samsung","a87d12": "Samsung",
+  "a8db03": "Samsung","ac3613": "Samsung","ac5f3e": "Samsung","ac6175": "Samsung",
+  "b072bf": "Samsung","b43a28": "Samsung","b479a7": "Samsung","b85a73": "Samsung",
+  "b8c68e": "Samsung","b8d61a": "Samsung","bc1485": "Samsung","bc20a4": "Samsung",
+  "bc79ad": "Samsung","bc851f": "Samsung","c0bdd1": "Samsung","c44202": "Samsung",
+  "c4576e": "Samsung","c81479": "Samsung","c819f7": "Samsung","cc07ab": "Samsung",
+  "cc3a61": "Samsung","ccf954": "Samsung","d0176a": "Samsung","d059e4": "Samsung",
+  "d087e2": "Samsung","d487d8": "Samsung","d4e8b2": "Samsung","d857ef": "Samsung",
+  "d890e8": "Samsung","dc7144": "Samsung","dcef09": "Samsung","e09971": "Samsung",
+  "e440e2": "Samsung","e492fb": "Samsung","e4e0c5": "Samsung","e8039a": "Samsung",
+  "e8508b": "Samsung","ec1f72": "Samsung","ec9bf3": "Samsung","f008f1": "Samsung",
+  "f025b7": "Samsung","f0e77e": "Samsung","f4428f": "Samsung","f47b5e": "Samsung",
+  "f8042e": "Samsung","f83dff": "Samsung","f8d0bd": "Samsung","fca13e": "Samsung",
+  "fcdb b3": "Samsung",
+  // Xiaomi / Redmi / POCO
+  "009ec8": "Xiaomi","044f8e": "Xiaomi","04cf8c": "Xiaomi","087a4c": "Xiaomi",
+  "0c1daf": "Xiaomi","102ab3": "Xiaomi","10683f": "Xiaomi","14f65a": "Xiaomi",
+  "185936": "Xiaomi","1c1b68": "Xiaomi","2082c0": "Xiaomi","24cf24": "Xiaomi",
+  "286c07": "Xiaomi","2cdb07": "Xiaomi","3480b3": "Xiaomi","38a4ed": "Xiaomi",
+  "3cbdd8": "Xiaomi","40313c": "Xiaomi","445829": "Xiaomi","482ca0": "Xiaomi",
+  "4c49e3": "Xiaomi","50642b": "Xiaomi","584498": "Xiaomi","5ce8eb": "Xiaomi",
+  "60ab14": "Xiaomi","640980": "Xiaomi","64b473": "Xiaomi","68dfdd": "Xiaomi",
+  "6c4011": "Xiaomi","742344": "Xiaomi","7451ba": "Xiaomi","7802f8": "Xiaomi",
+  "7811dc": "Xiaomi","7c1dd9": "Xiaomi","806d97": "Xiaomi","84fdd1": "Xiaomi",
+  "88c397": "Xiaomi","8cbebe": "Xiaomi","90c7d8": "Xiaomi","94049c": "Xiaomi",
+  "98fae3": "Xiaomi","9c99a0": "Xiaomi","a45046": "Xiaomi","a89ced": "Xiaomi",
+  "acf7f3": "Xiaomi","b0e235": "Xiaomi","b49d0b": "Xiaomi","b82cbc": "Xiaomi",
+  "bc9911": "Xiaomi","c40bcb": "Xiaomi","c8478c": "Xiaomi","cc2de0": "Xiaomi",
+  "d4970b": "Xiaomi","d8a98b": "Xiaomi","dcd916": "Xiaomi","e0ccf8": "Xiaomi",
+  "e446da": "Xiaomi","e884a5": "Xiaomi","ecd09f": "Xiaomi","f0b429": "Xiaomi",
+  "f48b32": "Xiaomi","f8a45f": "Xiaomi","fc64ba": "Xiaomi","fca89a": "Xiaomi",
+  // OnePlus
+  "04d9f5": "OnePlus","08e4e8": "OnePlus","144f8a": "OnePlus","1c77f6": "OnePlus",
+  "200a0d": "OnePlus","283a4d": "OnePlus","380197": "OnePlus","48db50": "OnePlus",
+  "4ca70d": "OnePlus","546c0e": "OnePlus","64a200": "OnePlus","74ee2a": "OnePlus",
+  "783b8d": "OnePlus","80b655": "OnePlus","84c7ea": "OnePlus","88d6c3": "OnePlus",
+  "90e17b": "OnePlus","94652d": "OnePlus","9cb6d0": "OnePlus","a4f3c1": "OnePlus",
+  "acb313": "OnePlus","b40b44": "OnePlus","b8e856": "OnePlus","bc54fc": "OnePlus",
+  "c0eefb": "OnePlus","c4d987": "OnePlus","cc8826": "OnePlus","d463fe": "OnePlus",
+  "d88039": "OnePlus","dc0d30": "OnePlus","e0286d": "OnePlus","e4d090": "OnePlus",
+  "e8d4e0": "OnePlus","ecf8eb": "OnePlus","f4a7a5": "OnePlus","f8e079": "OnePlus",
+  "fc8f90": "OnePlus",
+  // OPPO / Realme
+  "001a11": "OPPO","04d4c4": "OPPO","0c37dc": "OPPO","101f74": "OPPO",
+  "145f94": "OPPO","181eb0": "OPPO","1c56fe": "OPPO","203db2": "OPPO",
+  "241fa0": "OPPO","283a4d": "OPPO","2c54cf": "OPPO","307496": "OPPO",
+  "34d0b8": "OPPO","38262a": "OPPO","3c77e6": "OPPO","40831d": "OPPO",
+  "44746c": "OPPO","4801c5": "OPPO","4c4d66": "OPPO","50d2f5": "OPPO",
+  "54a050": "OPPO","58fcdb": "OPPO","60f81d": "OPPO","6409b0": "OPPO",
+  "683e34": "OPPO","70efe4": "OPPO","7467e8": "OPPO","74c63b": "OPPO",
+  "784a31": "OPPO","7c67a2": "OPPO","80971b": "OPPO","843838": "OPPO",
+  "88be27": "OPPO","8c210a": "OPPO","909164": "OPPO","94b86d": "OPPO",
+  "981435": "OPPO","9c431e": "OPPO","a086c6": "OPPO","a41731": "OPPO",
+  "acb57d": "OPPO","b0e892": "OPPO","b4d335": "OPPO","b83d4e": "OPPO",
+  "bc3aea": "OPPO","c025a2": "OPPO","c470ab": "OPPO","c814f0": "OPPO",
+  "cc74ad": "OPPO","d02788": "OPPO","d450a6": "OPPO","d81bfe": "OPPO",
+  "dc4a3e": "OPPO","e08e3c": "OPPO","e4aaea": "OPPO","e8c1d7": "OPPO",
+  "eca86b": "OPPO","f04347": "OPPO","f42923": "OPPO","f80ff9": "OPPO",
+  "fc7774": "OPPO",
+  // Vivo
+  "00c922": "Vivo","04106b": "Vivo","081ff3": "Vivo","0cd502": "Vivo",
+  "10604b": "Vivo","14d92e": "Vivo","18d6c7": "Vivo","1c232c": "Vivo",
+  "20e32a": "Vivo","24d101": "Vivo","28b2bd": "Vivo","2c0aa1": "Vivo",
+  "3065ec": "Vivo","342eb7": "Vivo","3871de": "Vivo","3ce911": "Vivo",
+  "40e64a": "Vivo","44d5f2": "Vivo","485073": "Vivo","4c796e": "Vivo",
+  "50bbac": "Vivo","548998": "Vivo","58c876": "Vivo","5c5f67": "Vivo",
+  "60e32b": "Vivo","64d154": "Vivo","68db54": "Vivo","6cb311": "Vivo",
+  "70c694": "Vivo","74d435": "Vivo","7828ca": "Vivo","7c8334": "Vivo",
+  "808917": "Vivo","84dbac": "Vivo","8c1e80": "Vivo","90671c": "Vivo",
+  "94a7b7": "Vivo","98bdd3": "Vivo","9c5a81": "Vivo","a06a44": "Vivo",
+  "a4b438": "Vivo","a89ced": "Vivo","acc1ee": "Vivo","b083fe": "Vivo",
+  "b42e99": "Vivo","b8c385": "Vivo","bc7220": "Vivo","c0c1c0": "Vivo",
+  "c46413": "Vivo","c8e748": "Vivo","cc5d4e": "Vivo","d022be": "Vivo",
+  "d4351d": "Vivo","d817f6": "Vivo","dc7196": "Vivo","e00af6": "Vivo",
+  "e417d8": "Vivo","e8d0fc": "Vivo","ecfaaa": "Vivo","f09fc2": "Vivo",
+  "f468e9": "Vivo","f8e23b": "Vivo","fc568e": "Vivo",
+  // Huawei / Honor
+  "000ee8": "Huawei","001227": "Huawei","001882": "Huawei","001e10": "Huawei",
+  "00259e": "Huawei","0046 4b": "Huawei","0090e8": "Huawei","009acd": "Huawei",
+  "00e0fc": "Huawei","04021f": "Huawei","041c77": "Huawei","04bd88": "Huawei",
+  "04c06f": "Huawei","04f938": "Huawei","08196a": "Huawei","086361": "Huawei",
+  "087a55": "Huawei","0c96bf": "Huawei","104780": "Huawei","10c61f": "Huawei",
+  "10d07a": "Huawei","147dc5": "Huawei","149f3c": "Huawei","14a51a": "Huawei",
+  "181dea": "Huawei","1868cb": "Huawei","1c1d86": "Huawei","1c8e5c": "Huawei",
+  "2008ed": "Huawei","202bc1": "Huawei","20f3a3": "Huawei","240995": "Huawei",
+  "244c07": "Huawei","2469a5": "Huawei","247f3c": "Huawei","283152": "Huawei",
+  "286ed4": "Huawei","2c9d1e": "Huawei","2cab00": "Huawei","30d17e": "Huawei",
+  "341298": "Huawei","344bf2": "Huawei","346bd3": "Huawei","34a84e": "Huawei",
+  "38bc01": "Huawei","3c4711": "Huawei","3cdfa9": "Huawei","404d8e": "Huawei",
+  "40cba8": "Huawei","40f308": "Huawei","446a2e": "Huawei","48ad08": "Huawei",
+  "4c1fcc": "Huawei","4c8bef": "Huawei","5001d5": "Huawei","50680a": "Huawei",
+  "54511b": "Huawei","54a51b": "Huawei","54c415": "Huawei","581f28": "Huawei",
+  "5c7d5e": "Huawei","5c8d4e": "Huawei","609c9f": "Huawei","60de44": "Huawei",
+  "60e701": "Huawei","641cae": "Huawei","64a651": "Huawei","6ca100": "Huawei",
+  "6cb749": "Huawei","70723c": "Huawei","707be8": "Huawei","74a063": "Huawei",
+  "74a528": "Huawei","781dba": "Huawei","78d8e0": "Huawei","78f557": "Huawei",
+  "7ca17d": "Huawei","80d4a5": "Huawei","841b5e": "Huawei","84be52": "Huawei",
+  "84db2f": "Huawei","881ecd": "Huawei","88532e": "Huawei","8c34fd": "Huawei",
+  "8ca6df": "Huawei","904e2b": "Huawei","9467f3": "Huawei","98e7f5": "Huawei",
+  "9c28ef": "Huawei","9c741a": "Huawei","9cc172": "Huawei","a00186": "Huawei",
+  "a01828": "Huawei","a057e3": "Huawei","a4c64f": "Huawei","a8ca7b": "Huawei",
+  "ac4e91": "Huawei","ace215": "Huawei","b41513": "Huawei","b4cd27": "Huawei",
+  "b808d7": "Huawei","b8bc1b": "Huawei","bc2505": "Huawei","bc7670": "Huawei",
+  "c0b883": "Huawei","c40683": "Huawei","c486e9": "Huawei","c85195": "Huawei",
+  "cc53b5": "Huawei","cca223": "Huawei","d03e5c": "Huawei","d43a20": "Huawei",
+  "d46e5c": "Huawei","d4f9a1": "Huawei","d8c771": "Huawei","dcd2fc": "Huawei",
+  "e468a3": "Huawei","e474a8": "Huawei","e8cd2d": "Huawei","ec233d": "Huawei",
+  "ec3873": "Huawei","f01c13": "Huawei","f4631f": "Huawei","f48e38": "Huawei",
+  "f80113": "Huawei","fc48ef": "Huawei",
+  // Google Pixel
+  "3c5ab4": "Google","546009": "Google","54bd79": "Google","64167f": "Google",
+  "94eb2c": "Google","a47733": "Google","c4438f": "Google","e4f042": "Google",
+  "f88fca": "Google",
+  // Motorola / Lenovo
+  "0004af": "Motorola","0008a2": "Motorola","000d28": "Motorola","0015a0": "Motorola",
+  "0016e3": "Motorola","001700": "Motorola","0019f6": "Motorola","001a1b": "Motorola",
+  "001b7d": "Motorola","00216b": "Motorola","002368": "Motorola","0026e8": "Motorola",
+  "0cd074": "Motorola","1c35a8": "Motorola","202af": "Motorola","247189": "Motorola",
+  "283dc2": "Motorola","2cd05a": "Motorola","3010b3": "Motorola","34d270": "Motorola",
+  "3c4a27": "Motorola","4094d8": "Motorola","4474 6c": "Motorola","48e7da": "Motorola",
+  "546ca0": "Motorola","586b14": "Motorola","5c514f": "Motorola","60beb5": "Motorola",
+  "64899a": "Motorola","682c7b": "Motorola","6c8814": "Motorola","703a51": "Motorola",
+  "78a351": "Motorola","7c6bd4": "Motorola","807d3a": "Motorola","843a4b": "Motorola",
+  "88a6c6": "Motorola","8ce2da": "Motorola","907af1": "Motorola","98fe94": "Motorola",
+  "9cd21e": "Motorola","a4b1e9": "Motorola","a84e3f": "Motorola","ac6bfb": "Motorola",
+  "b4ae2b": "Motorola","b85b2b": "Motorola","bc30d9": "Motorola","c0e54e": "Motorola",
+  "c417fe": "Motorola","c8d1d1": "Motorola","d022be": "Motorola","d45046": "Motorola",
+  "d8 55a3": "Motorola","dc2b61": "Motorola","e4907e": "Motorola","e899c4": "Motorola",
+  "ec4476": "Motorola","f0766f": "Motorola","f46d04": "Motorola","f8b57f": "Motorola",
+  // Nothing
+  "348c97": "Nothing","3c1fc2": "Nothing","8417 66": "Nothing","84c5a6": "Nothing",
+  "a40450": "Nothing","c8fb26": "Nothing","e45f01": "Nothing","f4d488": "Nothing",
+  // Additional Apple OUIs (common in newer devices)
+  "046865": "Apple","847b57": "Apple","685edd": "Apple","7c2ebd": "Apple",
+  "a83b76": "Apple","3c2866": "Apple","fc4d85": "Apple","8c8590": "Apple",
+  "645aed": "Apple","a86bad": "Apple","4cbd8b": "Apple","dca904": "Apple",
+  "081fd3": "Apple","5c1ffd": "Apple","b898b9": "Apple","e0b9e5": "Apple",
+  "3c9909": "Apple","7cfa8e": "Apple","a860b6": "Apple","f40304": "Apple",
+  "c4618b": "Apple","04e536": "Apple","0cbc9f": "Apple","384843": "Apple",
+  "5c1a6e": "Apple","704d7b": "Apple","8c7b9d": "Apple","acfdce": "Apple",
+  "d8d1cb": "Apple","f0989d": "Apple",
+  // Additional Xiaomi OUIs
+  "d43538": "Xiaomi","7cfb7a": "Xiaomi","8c97ea": "Xiaomi","6026ef": "Xiaomi",
+  "2041c4": "Xiaomi","b851df": "Xiaomi","c862e3": "Xiaomi",
+  // Asus
+  "001b11": "Asus","001e65": "Asus","001fbb": "Asus","002354": "Asus","002618": "Asus",
+  "104fa8": "Asus","107b44": "Asus","1c872c": "Asus","2c56dc": "Asus","2cfda1": "Asus",
+  "305a3a": "Asus","38d547": "Asus","3c97oe": "Asus","40167e": "Asus","485073": "Asus",
+  "4ce17": "Asus","50465d": "Asus","5404a6": "Asus","60a44c": "Asus","7085c2": "Asus",
+  "74d02b": "Asus","8c89a5": "Asus","ac220b": "Asus","b06ebf": "Asus","bc9746": "Asus",
+  "d850e6": "Asus","e4beed": "Asus","f0795e": "Asus",
+  // Nokia / HMD
+  "001e10": "Nokia","002569": "Nokia","0059ac": "Nokia","008012": "Nokia",
+  "0cd35a": "Nokia","18afe2": "Nokia","20ab37": "Nokia","24e9b2": "Nokia",
+  "3020fd": "Nokia","40b0fa": "Nokia","54927e": "Nokia","6012f2": "Nokia",
+  "6c283b": "Nokia","84b153": "Nokia","8863df": "Nokia","a4a8cd": "Nokia",
+  "b434b5": "Nokia","c42960": "Nokia","dcb632": "Nokia","e44017": "Nokia",
+  "f43e61": "Nokia","fca47e": "Nokia",
+  // Dell
+  "001125": "Dell","001372": "Dell","0014 22": "Dell","0018b4": "Dell","001e4f": "Dell",
+  "002170": "Dell","00219b": "Dell","00226 4": "Dell","002382": "Dell","002485": "Dell",
+  "006720": "Dell","18a99b": "Dell","1880be": "Dell","1c40af": "Dell","24b6fd": "Dell",
+  "28f10e": "Dell","34e6d7": "Dell","3417eb": "Dell","44a842": "Dell","484dfe": "Dell",
+  "54e1ad": "Dell","5cf9dd": "Dell","6cb311": "Dell","74867a": "Dell","84ef18": "Dell",
+  "8cec4b": "Dell","9c8e99": "Dell","a4c361": "Dell","b083fe": "Dell","bc305b": "Dell",
+  "c81f66": "Dell","d067e5": "Dell","d4be 19": "Dell","e8b1fc": "Dell","f04da2": "Dell",
+  "f48e38": "Dell","f8bc12": "Dell",
+  // HP
+  "001083": "HP","001560": "HP","001871": "HP","001a4b": "HP","001c2e": "HP",
+  "001e0b": "HP","001f29": "HP","002481": "HP","0025b3": "HP","005056": "HP",
+  "1cc1de": "HP","28924a": "HP","3851b7": "HP","400e85": "HP","40b034": "HP",
+  "5065f3": "HP","5c8a38": "HP","685b35": "HP","6c8dc1": "HP","78480f": "HP",
+  "7851ad": "HP","805ec0": "HP","90e2ba": "HP","9cb6d0": "HP","a0d3c1": "HP",
+  "b499ba": "HP","c4346b": "HP","d4c9ef": "HP","e8d8d1": "HP",
+};
+
+// Normalize verbose corporate names to friendly brand names
+function normalizeBrand(raw: string): string {
+  const r = raw.toLowerCase();
+  if (r.includes('apple')) return 'Apple';
+  if (r.includes('samsung')) return 'Samsung';
+  if (r.includes('xiaomi') || r.includes('redmi') || r.includes('poco')) return 'Xiaomi';
+  if (r.includes('oneplus') || r.includes('one plus')) return 'OnePlus';
+  if (r.includes('oppo') || r.includes('realme')) return 'OPPO';
+  if (r.includes('vivo')) return 'Vivo';
+  if (r.includes('huawei') || r.includes('honor')) return 'Huawei';
+  if (r.includes('google')) return 'Google';
+  if (r.includes('motorola') || r.includes('moto')) return 'Motorola';
+  if (r.includes('nokia') || r.includes('hmd')) return 'Nokia';
+  if (r.includes('nothing')) return 'Nothing';
+  if (r.includes('intel')) return 'Intel';
+  if (r.includes('broadcom')) return 'Broadcom';
+  if (r.includes('qualcomm')) return 'Qualcomm';
+  if (r.includes('dell')) return 'Dell';
+  if (r.includes('hewlett') || r.includes(' hp ') || r.startsWith('hp ')) return 'HP';
+  if (r.includes('lenovo')) return 'Lenovo';
+  if (r.includes('asus') || r.includes('asustek')) return 'Asus';
+  if (r.includes('acer')) return 'Acer';
+  if (r.includes('microsoft')) return 'Microsoft';
+  if (r.includes('amazon')) return 'Amazon';
+  if (r.includes('tplink') || r.includes('tp-link')) return 'TP-Link';
+  if (r.includes('netgear')) return 'Netgear';
+  if (r.includes('cisco')) return 'Cisco';
+  if (r.includes('beijing xiaomi')) return 'Xiaomi';
+  // Return the first word or two of the raw name if no match
+  const words = raw.trim().split(/[,\s]+/);
+  return words.slice(0, 2).join(' ');
+}
+
+// Persist cache on globalThis so it survives Next.js hot-reloads in dev
+declare global { var __ouiCache: Map<string, string> | undefined; }
+const apiCache: Map<string, string> = globalThis.__ouiCache ?? (globalThis.__ouiCache = new Map());
+
+export function lookupVendorLocal(mac: string): string | null {
+  const oui = mac.replace(/:/g, '').toLowerCase().slice(0, 6);
+  return OUI_MAP[oui] ?? null;
+}
+
+// Async version: local table first, then macvendors.com API, with caching
+export async function lookupVendor(mac: string): Promise<string> {
+  const oui = mac.replace(/:/g, '').toLowerCase().slice(0, 6);
+
+  // 1. Local table (instant)
+  if (OUI_MAP[oui]) return OUI_MAP[oui];
+
+  // 2. In-memory cache from previous API calls
+  if (apiCache.has(oui)) return apiCache.get(oui)!;
+
+  // 3. maclookup.app API — plain-text vendor name, accurate IEEE data
+  try {
+    const res = await fetch(`https://api.maclookup.app/v2/macs/${mac}/company/name`, {
+      cache: 'no-store',  // opt out of Next.js data cache
+      signal: AbortSignal.timeout(4000),
+    });
+    if (res.ok) {
+      const vendor = (await res.text()).trim();
+      // API returns "!" when not found
+      if (vendor && vendor !== '!') {
+        // Normalize long corporate names to friendly brand names
+        const friendly = normalizeBrand(vendor);
+        apiCache.set(oui, friendly);
+        return friendly;
+      }
+    }
+  } catch {
+    // Network unavailable or timeout — fall through to unknown
+  }
+
+  apiCache.set(oui, 'Unknown Device');
+  return 'Unknown Device';
+}

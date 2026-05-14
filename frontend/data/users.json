@@ -1,0 +1,54 @@
+[
+  {
+    "id": "u1",
+    "name": "Arjun Kumar",
+    "email": "student@gyan.com",
+    "password": "student123",
+    "role": "student",
+    "createdAt": "2026-05-14T07:21:50.878Z",
+    "macAddress": "aa:bb:cc:dd:ee:01"
+  },
+  {
+    "id": "u2",
+    "name": "Dr. Priya Sharma",
+    "email": "teacher@gyan.com",
+    "password": "teacher123",
+    "role": "teacher",
+    "createdAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "u3",
+    "name": "Rahul Singh",
+    "email": "admin@gyan.com",
+    "password": "admin123",
+    "role": "admin",
+    "createdAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "u4",
+    "name": "Meera Patel",
+    "email": "meera@gyan.com",
+    "password": "password123",
+    "role": "student",
+    "createdAt": "2026-05-14T07:21:50.878Z",
+    "macAddress": "aa:bb:cc:dd:ee:04"
+  },
+  {
+    "id": "u5",
+    "name": "Vikram Joshi",
+    "email": "vikram@gyan.com",
+    "password": "password123",
+    "role": "student",
+    "createdAt": "2026-05-14T07:21:50.878Z",
+    "macAddress": "aa:bb:cc:dd:ee:05"
+  },
+  {
+    "name": "Ishan Kulkarni",
+    "email": "ishankulkarni502@gmail.com",
+    "password": "Ishan@123",
+    "role": "student",
+    "id": "mp574fmwomn6q55qwf",
+    "createdAt": "2026-05-14T07:57:43.592Z",
+    "macAddress": null
+  }
+]
