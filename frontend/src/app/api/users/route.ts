@@ -10,6 +10,7 @@ export async function GET() {
       email: u.email,
       role: u.role,
       createdAt: u.createdAt,
+      macAddress: u.macAddress ?? null,
     }));
     return NextResponse.json({ users: allUsers });
   } catch (error) {

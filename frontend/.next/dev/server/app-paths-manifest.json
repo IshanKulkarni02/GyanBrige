@@ -1,0 +1,21 @@
+{
+  "/api/attendance/network-scan/route": "app/api/attendance/network-scan/route.js",
+  "/api/auth/login/route": "app/api/auth/login/route.js",
+  "/api/auth/signup/route": "app/api/auth/signup/route.js",
+  "/api/courses/[id]/route": "app/api/courses/[id]/route.js",
+  "/api/courses/route": "app/api/courses/route.js",
+  "/api/enrollments/route": "app/api/enrollments/route.js",
+  "/api/generate-notes/route": "app/api/generate-notes/route.js",
+  "/api/invites/[token]/route": "app/api/invites/[token]/route.js",
+  "/api/invites/route": "app/api/invites/route.js",
+  "/api/users/route": "app/api/users/route.js",
+  "/dashboard/admin/mac-assign/page": "app/dashboard/admin/mac-assign/page.js",
+  "/dashboard/admin/page": "app/dashboard/admin/page.js",
+  "/dashboard/admin/users/page": "app/dashboard/admin/users/page.js",
+  "/dashboard/student/course/[id]/page": "app/dashboard/student/course/[id]/page.js",
+  "/dashboard/student/page": "app/dashboard/student/page.js",
+  "/dashboard/teacher/attendance/page": "app/dashboard/teacher/attendance/page.js",
+  "/login/page": "app/login/page.js",
+  "/page": "app/page.js",
+  "/signup/page": "app/signup/page.js"
+}

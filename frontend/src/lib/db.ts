@@ -12,6 +12,7 @@ const COURSES_FILE = path.join(DB_PATH, 'courses.json');
 const LECTURES_FILE = path.join(DB_PATH, 'lectures.json');
 const ENROLLMENTS_FILE = path.join(DB_PATH, 'enrollments.json');
 const ATTENDANCE_FILE = path.join(DB_PATH, 'attendance.json');
+const INVITES_FILE = path.join(DB_PATH, 'invites.json');
 
 // Ensure data directory exists
 if (!fs.existsSync(DB_PATH)) {
@@ -27,6 +28,7 @@ export interface User {
   role: 'student' | 'teacher' | 'admin';
   createdAt: string;
   avatar?: string;
+  macAddress?: string;
 }
 
 export interface Course {
@@ -67,6 +69,14 @@ export interface AttendanceRecord {
   records: { [studentId: string]: 'present' | 'absent' | 'late' };
   markedBy: string;
   createdAt: string;
+}
+
+export interface Invite {
+  token: string;
+  role: 'student' | 'teacher' | 'admin';
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string;
 }
 
 // Helper functions
@@ -407,4 +417,55 @@ export const attendance = {
   },
 };
 
-export default { users, courses, lectures, enrollments, attendance };
+// Invite operations
+export const invites = {
+  getAll: (): Invite[] => readJSON<Invite>(INVITES_FILE),
+
+  getByToken: (token: string): Invite | undefined => {
+    const all = readJSON<Invite>(INVITES_FILE);
+    return all.find(i => i.token === token);
+  },
+
+  create: (role: Invite['role'], createdBy: string): Invite => {
+    const all = readJSON<Invite>(INVITES_FILE);
+    const token = generateId() + generateId();
+    const now = new Date();
+    const expires = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const invite: Invite = {
+      token,
+      role,
+      createdBy,
+      createdAt: now.toISOString(),
+      expiresAt: expires.toISOString(),
+    };
+    all.push(invite);
+    writeJSON(INVITES_FILE, all);
+    return invite;
+  },
+
+  consume: (token: string): Invite | null => {
+    const all = readJSON<Invite>(INVITES_FILE);
+    const index = all.findIndex(i => i.token === token);
+    if (index === -1) return null;
+    const [invite] = all.splice(index, 1);
+    writeJSON(INVITES_FILE, all);
+    return invite;
+  },
+
+  delete: (token: string): boolean => {
+    const all = readJSON<Invite>(INVITES_FILE);
+    const filtered = all.filter(i => i.token !== token);
+    if (filtered.length === all.length) return false;
+    writeJSON(INVITES_FILE, filtered);
+    return true;
+  },
+
+  isValid: (token: string): Invite | null => {
+    const invite = readJSON<Invite>(INVITES_FILE).find(i => i.token === token);
+    if (!invite) return null;
+    if (new Date(invite.expiresAt) < new Date()) return null;
+    return invite;
+  },
+};
+
+export default { users, courses, lectures, enrollments, attendance, invites };

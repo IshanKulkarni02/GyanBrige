@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
   try {
     // Get AI settings from request headers (passed from client localStorage)
     const useLocalAI = request.headers.get('x-use-local-ai') === 'true';
-    const ollamaModel = request.headers.get('x-ollama-model') || 'llama2';
+    const ollamaModel = request.headers.get('x-ollama-model') || 'llama3:latest';
     const openaiModel = request.headers.get('x-openai-model') || 'gpt-4o-mini';
     const openaiKey = request.headers.get('x-openai-key') || process.env.OPENAI_API_KEY;
     

@@ -14,6 +14,7 @@ interface Student {
   id: string;
   name: string;
   email: string;
+  macAddress?: string | null;
 }
 
 interface AttendanceRecord {
@@ -37,6 +38,9 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<{ matchedCount: number; unmatchedCount: number; scannedAt: string } | null>(null);
+  const [scanError, setScanError] = useState('');
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -70,10 +74,11 @@ export default function AttendancePage() {
       const res = await fetch(`/api/enrollments?courseId=${courseId}`);
       const data = await res.json();
       // Extract students from enrollments
-      const enrolledStudents = data.enrollments?.map((e: { userName: string; userEmail: string; userId: string }) => ({
+      const enrolledStudents = data.enrollments?.map((e: { userName: string; userEmail: string; userId: string; userMacAddress?: string | null }) => ({
         id: e.userId,
         name: e.userName,
         email: e.userEmail,
+        macAddress: e.userMacAddress ?? null,
       })) || [];
       setStudents(enrolledStudents);
       
@@ -132,6 +137,40 @@ export default function AttendancePage() {
     students.forEach(s => { newAttendance[s.id] = 'absent'; });
     setAttendance(newAttendance);
     setSaved(false);
+  };
+
+  const scanNetwork = async () => {
+    if (!selectedCourse) return;
+    setScanning(true);
+    setScanResult(null);
+    setScanError('');
+    try {
+      const res = await fetch('/api/attendance/network-scan');
+      const data = await res.json();
+      if (!res.ok) {
+        setScanError(data.error || 'Network scan failed');
+        return;
+      }
+      // Auto-mark detected students as present (only those enrolled in this course)
+      const enrolledIds = new Set(students.map(s => s.id));
+      const newAttendance: AttendanceRecord = { ...attendance };
+      data.matchedStudents.forEach((s: { id: string }) => {
+        if (enrolledIds.has(s.id)) {
+          newAttendance[s.id] = 'present';
+        }
+      });
+      setAttendance(newAttendance);
+      setSaved(false);
+      setScanResult({
+        matchedCount: data.matchedStudents.filter((s: { id: string }) => enrolledIds.has(s.id)).length,
+        unmatchedCount: data.unmatchedStudents.filter((s: { id: string }) => enrolledIds.has(s.id)).length,
+        scannedAt: data.scannedAt,
+      });
+    } catch {
+      setScanError('Network scan failed — check server connectivity');
+    } finally {
+      setScanning(false);
+    }
   };
 
   const saveAttendance = async () => {
@@ -250,14 +289,49 @@ export default function AttendancePage() {
           </div>
 
           {/* Quick Actions */}
-          <div className="flex gap-4 mb-6">
+          <div className="flex flex-wrap gap-4 mb-4">
             <button onClick={markAllPresent} className="glass px-4 py-2 rounded-xl hover:bg-emerald-500/20 transition">
               ✅ Mark All Present
             </button>
             <button onClick={markAllAbsent} className="glass px-4 py-2 rounded-xl hover:bg-red-500/20 transition">
               ❌ Mark All Absent
             </button>
+            <button
+              onClick={scanNetwork}
+              disabled={scanning}
+              className="glass px-4 py-2 rounded-xl hover:bg-blue-500/20 transition disabled:opacity-50 flex items-center gap-2"
+            >
+              {scanning ? (
+                <><span className="animate-spin inline-block">⏳</span> Scanning...</>
+              ) : (
+                <>📡 Scan Network</>
+              )}
+            </button>
           </div>
+
+          {/* Scan result banner */}
+          {scanResult && (
+            <div className="glass rounded-xl p-4 mb-4 border border-blue-500/20 bg-blue-500/5">
+              <div className="flex items-start gap-3">
+                <span className="text-xl">📡</span>
+                <div>
+                  <p className="font-medium text-blue-300">Network scan complete</p>
+                  <p className="text-white/60 text-sm">
+                    {scanResult.matchedCount} student{scanResult.matchedCount !== 1 ? 's' : ''} detected on network and marked present.
+                    {scanResult.unmatchedCount > 0 && (
+                      <span className="text-amber-400"> {scanResult.unmatchedCount} student{scanResult.unmatchedCount !== 1 ? 's' : ''} have no registered MAC — mark manually.</span>
+                    )}
+                  </p>
+                  <p className="text-white/30 text-xs mt-1">Scanned at {new Date(scanResult.scannedAt).toLocaleTimeString()}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {scanError && (
+            <div className="glass rounded-xl p-4 mb-4 border border-red-500/20 bg-red-500/5">
+              <p className="text-red-400 text-sm">⚠️ {scanError}</p>
+            </div>
+          )}
 
           {/* Student List */}
           <div className="glass rounded-2xl overflow-hidden mb-6">
@@ -272,7 +346,13 @@ export default function AttendancePage() {
                   </div>
                   <div className="flex-1">
                     <h4 className="font-medium">{student.name}</h4>
-                    <p className="text-white/50 text-sm">{student.email}</p>
+                    <p className="text-white/50 text-sm">
+                      {student.email}
+                      {student.macAddress
+                        ? <span className="ml-2 text-blue-400/50 text-xs font-mono">MAC ✓</span>
+                        : <span className="ml-2 text-amber-400/40 text-xs">no MAC</span>
+                      }
+                    </p>
                   </div>
                   <div className="flex gap-2">
                     {(['present', 'late', 'absent'] as const).map((status) => (

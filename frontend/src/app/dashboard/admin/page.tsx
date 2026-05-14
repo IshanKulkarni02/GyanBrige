@@ -193,7 +193,7 @@ export default function AdminDashboard() {
           <div>
             <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
             <div className="space-y-4">
-              <div className="glass glass-hover rounded-xl p-4 flex items-center gap-4 cursor-pointer">
+              <Link href="/dashboard/admin/users" className="glass glass-hover rounded-xl p-4 flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
                   <span className="text-xl">➕</span>
                 </div>
@@ -201,8 +201,8 @@ export default function AdminDashboard() {
                   <h3 className="font-semibold">Create User</h3>
                   <p className="text-white/50 text-sm">Add new student or teacher</p>
                 </div>
-              </div>
-              <div className="glass glass-hover rounded-xl p-4 flex items-center gap-4 cursor-pointer">
+              </Link>
+              <Link href="/dashboard/admin/courses" className="glass glass-hover rounded-xl p-4 flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center">
                   <span className="text-xl">🔗</span>
                 </div>
@@ -210,8 +210,8 @@ export default function AdminDashboard() {
                   <h3 className="font-semibold">Course Management</h3>
                   <p className="text-white/50 text-sm">Manage courses and enrollments</p>
                 </div>
-              </div>
-              <div className="glass glass-hover rounded-xl p-4 flex items-center gap-4 cursor-pointer">
+              </Link>
+              <Link href="/dashboard/admin/ai" className="glass glass-hover rounded-xl p-4 flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
                   <span className="text-xl">🤖</span>
                 </div>
@@ -219,7 +219,7 @@ export default function AdminDashboard() {
                   <h3 className="font-semibold">AI Model Settings</h3>
                   <p className="text-white/50 text-sm">Toggle between ChatGPT & Ollama</p>
                 </div>
-              </div>
+              </Link>
             </div>
           </div>
         </div>

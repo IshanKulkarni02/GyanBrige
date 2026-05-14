@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   experimental: {
@@ -6,12 +7,8 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '100gb',
     },
   },
-  // Allow large file uploads
-  api: {
-    bodyParser: {
-      sizeLimit: '100gb',
-    },
-    responseLimit: false,
+  turbopack: {
+    root: path.resolve(__dirname),
   },
 };
 
