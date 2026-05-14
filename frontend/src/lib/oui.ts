@@ -237,6 +237,18 @@ const OUI_MAP: Record<string, string> = {
   // Nothing
   "348c97": "Nothing","3c1fc2": "Nothing","8417 66": "Nothing","84c5a6": "Nothing",
   "a40450": "Nothing","c8fb26": "Nothing","e45f01": "Nothing","f4d488": "Nothing",
+  // Additional Apple OUIs (common in newer devices)
+  "046865": "Apple","847b57": "Apple","685edd": "Apple","7c2ebd": "Apple",
+  "a83b76": "Apple","3c2866": "Apple","fc4d85": "Apple","8c8590": "Apple",
+  "645aed": "Apple","a86bad": "Apple","4cbd8b": "Apple","dca904": "Apple",
+  "081fd3": "Apple","5c1ffd": "Apple","b898b9": "Apple","e0b9e5": "Apple",
+  "3c9909": "Apple","7cfa8e": "Apple","a860b6": "Apple","f40304": "Apple",
+  "c4618b": "Apple","04e536": "Apple","0cbc9f": "Apple","384843": "Apple",
+  "5c1a6e": "Apple","704d7b": "Apple","8c7b9d": "Apple","acfdce": "Apple",
+  "d8d1cb": "Apple","f0989d": "Apple",
+  // Additional Xiaomi OUIs
+  "d43538": "Xiaomi","7cfb7a": "Xiaomi","8c97ea": "Xiaomi","6026ef": "Xiaomi",
+  "2041c4": "Xiaomi","b851df": "Xiaomi","c862e3": "Xiaomi",
   // Asus
   "001b11": "Asus","001e65": "Asus","001fbb": "Asus","002354": "Asus","002618": "Asus",
   "104fa8": "Asus","107b44": "Asus","1c872c": "Asus","2c56dc": "Asus","2cfda1": "Asus",
@@ -269,7 +281,78 @@ const OUI_MAP: Record<string, string> = {
   "b499ba": "HP","c4346b": "HP","d4c9ef": "HP","e8d8d1": "HP",
 };
 
-export function lookupVendor(mac: string): string {
+// Normalize verbose corporate names to friendly brand names
+function normalizeBrand(raw: string): string {
+  const r = raw.toLowerCase();
+  if (r.includes('apple')) return 'Apple';
+  if (r.includes('samsung')) return 'Samsung';
+  if (r.includes('xiaomi') || r.includes('redmi') || r.includes('poco')) return 'Xiaomi';
+  if (r.includes('oneplus') || r.includes('one plus')) return 'OnePlus';
+  if (r.includes('oppo') || r.includes('realme')) return 'OPPO';
+  if (r.includes('vivo')) return 'Vivo';
+  if (r.includes('huawei') || r.includes('honor')) return 'Huawei';
+  if (r.includes('google')) return 'Google';
+  if (r.includes('motorola') || r.includes('moto')) return 'Motorola';
+  if (r.includes('nokia') || r.includes('hmd')) return 'Nokia';
+  if (r.includes('nothing')) return 'Nothing';
+  if (r.includes('intel')) return 'Intel';
+  if (r.includes('broadcom')) return 'Broadcom';
+  if (r.includes('qualcomm')) return 'Qualcomm';
+  if (r.includes('dell')) return 'Dell';
+  if (r.includes('hewlett') || r.includes(' hp ') || r.startsWith('hp ')) return 'HP';
+  if (r.includes('lenovo')) return 'Lenovo';
+  if (r.includes('asus') || r.includes('asustek')) return 'Asus';
+  if (r.includes('acer')) return 'Acer';
+  if (r.includes('microsoft')) return 'Microsoft';
+  if (r.includes('amazon')) return 'Amazon';
+  if (r.includes('tplink') || r.includes('tp-link')) return 'TP-Link';
+  if (r.includes('netgear')) return 'Netgear';
+  if (r.includes('cisco')) return 'Cisco';
+  if (r.includes('beijing xiaomi')) return 'Xiaomi';
+  // Return the first word or two of the raw name if no match
+  const words = raw.trim().split(/[,\s]+/);
+  return words.slice(0, 2).join(' ');
+}
+
+// Persist cache on globalThis so it survives Next.js hot-reloads in dev
+declare global { var __ouiCache: Map<string, string> | undefined; }
+const apiCache: Map<string, string> = globalThis.__ouiCache ?? (globalThis.__ouiCache = new Map());
+
+export function lookupVendorLocal(mac: string): string | null {
   const oui = mac.replace(/:/g, '').toLowerCase().slice(0, 6);
-  return OUI_MAP[oui] ?? 'Unknown Device';
+  return OUI_MAP[oui] ?? null;
+}
+
+// Async version: local table first, then macvendors.com API, with caching
+export async function lookupVendor(mac: string): Promise<string> {
+  const oui = mac.replace(/:/g, '').toLowerCase().slice(0, 6);
+
+  // 1. Local table (instant)
+  if (OUI_MAP[oui]) return OUI_MAP[oui];
+
+  // 2. In-memory cache from previous API calls
+  if (apiCache.has(oui)) return apiCache.get(oui)!;
+
+  // 3. maclookup.app API — plain-text vendor name, accurate IEEE data
+  try {
+    const res = await fetch(`https://api.maclookup.app/v2/macs/${mac}/company/name`, {
+      cache: 'no-store',  // opt out of Next.js data cache
+      signal: AbortSignal.timeout(4000),
+    });
+    if (res.ok) {
+      const vendor = (await res.text()).trim();
+      // API returns "!" when not found
+      if (vendor && vendor !== '!') {
+        // Normalize long corporate names to friendly brand names
+        const friendly = normalizeBrand(vendor);
+        apiCache.set(oui, friendly);
+        return friendly;
+      }
+    }
+  } catch {
+    // Network unavailable or timeout — fall through to unknown
+  }
+
+  apiCache.set(oui, 'Unknown Device');
+  return 'Unknown Device';
 }

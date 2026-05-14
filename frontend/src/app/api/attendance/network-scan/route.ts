@@ -19,16 +19,19 @@ function isRandomizedMac(mac: string): boolean {
 }
 
 function normalizeMac(raw: string): string {
-  const hex = raw.replace(/[:\-.]/g, '').toLowerCase();
-  if (hex.length !== 12) return '';
-  return hex.match(/.{2}/g)!.join(':');
+  // Split on any separator, pad each octet to 2 digits, rejoin with colons.
+  // Handles macOS ARP output like "4:68:65:62:96:99" (missing leading zero).
+  const parts = raw.split(/[:\-.]/);
+  if (parts.length !== 6) return '';
+  const octets = parts.map(p => p.padStart(2, '0').toLowerCase());
+  if (octets.some(o => !/^[0-9a-f]{2}$/.test(o))) return '';
+  return octets.join(':');
 }
 
-// Parse `arp -a` into structured device list
-// macOS/Linux: hostname (ip) at mac on iface ...
-function parseArpFull(output: string): ScannedDevice[] {
+// Parse `arp -a` into raw entries (vendor lookup is async, done separately)
+function parseArpEntries(output: string): Array<{ mac: string; ip: string; hostname: string }> {
   const lines = output.split('\n').filter(Boolean);
-  const devices: ScannedDevice[] = [];
+  const entries: Array<{ mac: string; ip: string; hostname: string }> = [];
   const macSet = new Set<string>();
 
   for (const line of lines) {
@@ -38,17 +41,18 @@ function parseArpFull(output: string): ScannedDevice[] {
 
     const mac = normalizeMac(macMatch[1]);
     if (!mac || mac === 'ff:ff:ff:ff:ff:ff' || mac === '00:00:00:00:00:00') continue;
+    // Skip multicast MACs (LSB of first octet = 1, e.g. 01:00:5e:...)
+    if (parseInt(mac.split(':')[0], 16) & 0x01) continue;
     if (macSet.has(mac)) continue;
     macSet.add(mac);
 
-    const ip = ipMatch[1];
-    const hostname = line.split(' ')[0] === '?' ? '' : line.split(' ')[0];
-    const randomized = isRandomizedMac(mac);
-    const vendor = randomized ? 'Randomized MAC' : lookupVendor(mac);
-
-    devices.push({ mac, ip, hostname, vendor, randomized, assignedTo: null });
+    entries.push({
+      mac,
+      ip: ipMatch[1],
+      hostname: line.split(' ')[0] === '?' ? '' : line.split(' ')[0],
+    });
   }
-  return devices;
+  return entries;
 }
 
 // Ping broadcast to refresh ARP cache
@@ -93,7 +97,7 @@ export async function GET() {
       );
     }
 
-    const devices = parseArpFull(arpOutput);
+    const rawEntries = parseArpEntries(arpOutput);
     const allUsers = users.getAll();
     const studentMacMap = new Map(
       allUsers
@@ -101,10 +105,19 @@ export async function GET() {
         .map(u => [normalizeMac(u.macAddress!), { id: u.id, name: u.name }])
     );
 
-    // Annotate each device with assigned student (if any)
-    for (const device of devices) {
-      device.assignedTo = studentMacMap.get(device.mac) ?? null;
-    }
+    // Resolve vendors in parallel (async — hits API for unknown OUIs)
+    const devices: ScannedDevice[] = await Promise.all(
+      rawEntries.map(async entry => {
+        const randomized = isRandomizedMac(entry.mac);
+        const vendor = randomized ? 'Randomized MAC' : await lookupVendor(entry.mac);
+        return {
+          ...entry,
+          vendor,
+          randomized,
+          assignedTo: studentMacMap.get(entry.mac) ?? null,
+        };
+      })
+    );
 
     const onlineMacs = devices.map(d => d.mac);
 
