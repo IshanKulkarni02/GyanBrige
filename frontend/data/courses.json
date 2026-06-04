@@ -1,0 +1,56 @@
+[
+  {
+    "id": "c1",
+    "name": "Mathematics",
+    "description": "Algebra, Calculus, and Geometry",
+    "icon": "📐",
+    "color": "from-emerald-500 to-teal-500",
+    "teacherId": "u2",
+    "createdAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "c2",
+    "name": "Physics",
+    "description": "Mechanics, Thermodynamics, and Optics",
+    "icon": "⚡",
+    "color": "from-purple-500 to-indigo-500",
+    "teacherId": "u2",
+    "createdAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "c3",
+    "name": "Chemistry",
+    "description": "Organic, Inorganic, and Physical Chemistry",
+    "icon": "🧪",
+    "color": "from-amber-500 to-orange-500",
+    "teacherId": "u2",
+    "createdAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "c4",
+    "name": "Biology",
+    "description": "Cell Biology, Genetics, and Ecology",
+    "icon": "🧬",
+    "color": "from-green-500 to-emerald-500",
+    "teacherId": "u2",
+    "createdAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "c5",
+    "name": "English",
+    "description": "Grammar, Literature, and Writing",
+    "icon": "📚",
+    "color": "from-blue-500 to-cyan-500",
+    "teacherId": "u2",
+    "createdAt": "2026-05-14T07:21:50.878Z"
+  },
+  {
+    "id": "c6",
+    "name": "History",
+    "description": "World History and Indian History",
+    "icon": "🏛️",
+    "color": "from-rose-500 to-pink-500",
+    "teacherId": "u2",
+    "createdAt": "2026-05-14T07:21:50.878Z"
+  }
+]
