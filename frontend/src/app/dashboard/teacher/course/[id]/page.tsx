@@ -30,6 +30,11 @@ export default function TeacherCoursePage() {
   const [editedNotes,    setEditedNotes]    = useState('');
   const [savingNotes,    setSavingNotes]    = useState(false);
   const [regenNotes,     setRegenNotes]     = useState(false);
+  const [regenStatus,    setRegenStatus]    = useState('');
+  // "also generate" toggles
+  const [alsoChapters,   setAlsoChapters]   = useState(false);
+  const [alsoQuiz,       setAlsoQuiz]       = useState(false);
+  const [alsoQuizCount,  setAlsoQuizCount]  = useState(5);
 
   // Quiz state
   const [quizModal,      setQuizModal]      = useState<string | null>(null); // lectureId
@@ -119,25 +124,55 @@ export default function TeacherCoursePage() {
   const regenerateNotes = async () => {
     if (!editingLecture) return;
     setRegenNotes(true);
+    setRegenStatus('Transcribing…');
     try {
-      const res = await authFetch('/api/generate-notes', {
+      // Always use generate-all so we can optionally also build quiz + chapters
+      const res = await authFetch(`/api/lectures/${editingLecture.id}/generate-all`, {
         method: 'POST',
-        // Pass lectureId so the server can use the stored transcript if available
         body: JSON.stringify({
-          lectureId:   editingLecture.id,
-          title:       editingLecture.title,
-          description: editingLecture.description,
+          generateNotes:  true,
+          detectChapters: alsoChapters,
+          generateQuiz:   alsoQuiz,
+          quizTitle:      `Quiz: ${editingLecture.title}`,
+          quizCount:      alsoQuizCount,
         }),
       });
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error);
-      setEditedNotes(data.notes);
+      if (!res.ok && !data.notes) throw new Error(data.error || 'Generation failed');
+
+      setRegenStatus('Done!');
+      if (data.notes) setEditedNotes(data.notes);
+
+      // Update lecture in local state with new chapters if detected
+      if (data.chapters) {
+        setLectures(prev => prev.map(l =>
+          l.id === editingLecture.id ? { ...l, chapters: data.chapters } : l
+        ));
+      }
+      // Add quiz to local state
+      if (data.quiz) {
+        setLectureQuizzes(prev => ({
+          ...prev,
+          [editingLecture.id]: [...(prev[editingLecture.id] ?? []), data.quiz],
+        }));
+      }
+
+      // Build summary toast
       const src = data.transcriptSource as string;
-      if (src === 'stored')       toast.success('Notes regenerated from stored transcript ✓');
-      else if (src === 'video')   toast.success('Notes regenerated — video transcribed from server ✓ (transcript saved for next time)');
-      else                        toast.warning('No video found — notes generated from title only. Upload the video for accurate notes.');
-    } catch (err) { toast.error(err instanceof Error ? err.message : 'Regeneration failed'); }
-    finally { setRegenNotes(false); }
+      const parts = ['Notes regenerated'];
+      if (src === 'video')   parts.push('video transcribed & saved');
+      if (data.chapters)     parts.push(`${data.chapters.length} chapters detected`);
+      if (data.quiz)         parts.push(`quiz created (${data.quiz.questions?.length ?? 0} Qs)`);
+      if (data.notesError)   toast.error(`Notes error: ${data.notesError}`);
+      if (data.chaptersError) toast.error(`Chapters error: ${data.chaptersError}`);
+      if (data.quizError)    toast.error(`Quiz error: ${data.quizError}`);
+      if (!data.notesError)  toast.success(parts.join(' · ') + ' ✓');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Generation failed');
+    } finally {
+      setRegenNotes(false);
+      setRegenStatus('');
+    }
   };
 
   // ── Quiz builder ─────────────────────────────────────────────────────────────
@@ -317,19 +352,45 @@ export default function TeacherCoursePage() {
               <button onClick={() => setEditingLecture(null)} className="text-white/40 hover:text-white text-xl">✕</button>
             </div>
 
-            <div className="flex items-center gap-2 mb-3 shrink-0 flex-wrap">
-              <button onClick={regenerateNotes} disabled={regenNotes}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 disabled:opacity-50 transition text-sm">
-                {regenNotes ? <><span className="animate-spin">⚙️</span> Regenerating…</> : '🤖 Regenerate AI Notes'}
-              </button>
-              {editingLecture.segments?.length ? (
-                <span className="text-emerald-400 text-xs">✓ transcript stored</span>
-              ) : editingLecture.videoUrl ? (
-                <span className="text-blue-400 text-xs">📹 will transcribe video from server</span>
-              ) : (
-                <span className="text-white/40 text-xs">no video — uses title only</span>
-              )}
+            {/* Source indicator */}
+            <div className="mb-3 text-xs">
+              {editingLecture.segments?.length
+                ? <span className="text-emerald-400">✓ transcript stored — instant regeneration</span>
+                : editingLecture.videoUrl
+                  ? <span className="text-blue-400">📹 no transcript yet — will auto-transcribe from video</span>
+                  : <span className="text-white/40">no video — notes from title only</span>}
             </div>
+
+            {/* Also generate checkboxes */}
+            <div className="glass rounded-xl p-3 mb-3 space-y-2.5">
+              <p className="text-xs text-white/50 mb-1">Generate together to save AI credits — one transcription, all at once:</p>
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <input type="checkbox" checked className="accent-emerald-500" readOnly />
+                <span className="text-sm text-white/80">✏️ Regenerate Notes</span>
+                <span className="text-xs text-white/30">(always included)</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <input type="checkbox" checked={alsoChapters} onChange={e => setAlsoChapters(e.target.checked)} className="accent-blue-500" />
+                <span className="text-sm text-white/80">🔖 Detect Chapter Bookmarks</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <input type="checkbox" checked={alsoQuiz} onChange={e => setAlsoQuiz(e.target.checked)} className="accent-amber-500" />
+                <span className="text-sm text-white/80">🧠 Generate Quiz</span>
+                {alsoQuiz && (
+                  <select value={alsoQuizCount} onChange={e => setAlsoQuizCount(Number(e.target.value))}
+                    className="ml-1 bg-white/10 text-white/70 rounded-lg px-2 py-0.5 text-xs border border-white/10">
+                    {[3,5,8,10].map(n => <option key={n} value={n}>{n} questions</option>)}
+                  </select>
+                )}
+              </label>
+            </div>
+
+            <button onClick={regenerateNotes} disabled={regenNotes}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 disabled:opacity-50 transition text-sm mb-3 w-full justify-center">
+              {regenNotes
+                ? <><span className="animate-spin">⚙️</span> {regenStatus || 'Generating…'}</>
+                : `🤖 Generate${alsoChapters || alsoQuiz ? ' All' : ' Notes'}`}
+            </button>
 
             <textarea
               ref={notesRef}
