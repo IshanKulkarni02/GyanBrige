@@ -48,9 +48,23 @@ export interface Enrollment {
 }
 
 // Helper
-function getStoredUser(): { id: string; role: string } | null {
+export function getStoredUser(): { id: string; role: string } | null {
   if (typeof window === 'undefined') return null;
   try { return JSON.parse(localStorage.getItem('user') ?? ''); } catch { return null; }
+}
+
+/** fetch wrapper that automatically attaches x-user-id/x-user-role headers */
+export function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const user = getStoredUser();
+  const isFormData = options.body instanceof FormData;
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(user ? { 'x-user-id': user.id, 'x-user-role': user.role } : {}),
+      ...options.headers,
+    },
+  });
 }
 
 async function fetchAPI<T>(

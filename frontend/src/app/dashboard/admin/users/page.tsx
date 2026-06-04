@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/api';
 
 interface User {
   id: string;
@@ -67,7 +68,7 @@ export default function UsersPage() {
 
   const loadUsers = async () => {
     try {
-      const res = await fetch('/api/users');
+      const res = await authFetch('/api/users');
       const data = await res.json();
       setUsers(data.users || []);
     } catch (err) {
@@ -79,7 +80,7 @@ export default function UsersPage() {
 
   const loadInvites = async () => {
     try {
-      const res = await fetch('/api/invites');
+      const res = await authFetch('/api/invites');
       const data = await res.json();
       setInviteList(data.invites || []);
     } catch (err) {
@@ -155,9 +156,8 @@ export default function UsersPage() {
     }
     setMacError('');
     try {
-      await fetch(`/api/users/${editingUser.id}`, {
+      await authFetch(`/api/users/${editingUser.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: editName, role: editRole, macAddress: editMacAddress.trim() || null }),
       });
       setEditingUser(null);
@@ -170,7 +170,7 @@ export default function UsersPage() {
   const deleteUser = async (userId: string) => {
     if (!confirm('Are you sure you want to delete this user?')) return;
     try {
-      await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+      await authFetch(`/api/users/${userId}`, { method: 'DELETE' });
       loadUsers();
     } catch (err) {
       console.error('Failed to delete user:', err);
@@ -181,10 +181,9 @@ export default function UsersPage() {
     if (!currentUser) return;
     setGeneratingInvite(true);
     try {
-      const res = await fetch('/api/invites', {
+      const res = await authFetch('/api/invites', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: inviteRole, createdBy: currentUser.id }),
+        body: JSON.stringify({ role: inviteRole }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -207,7 +206,7 @@ export default function UsersPage() {
 
   const revokeInvite = async (token: string) => {
     try {
-      await fetch(`/api/invites/${token}`, { method: 'DELETE' });
+      await authFetch(`/api/invites/${token}`, { method: 'DELETE' });
       loadInvites();
     } catch (err) {
       console.error('Failed to revoke invite:', err);

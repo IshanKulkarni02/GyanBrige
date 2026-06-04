@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/api';
 
 interface Course {
   id: string;
@@ -59,7 +60,7 @@ export default function AttendancePage() {
 
   const loadCourses = async (teacherId: string) => {
     try {
-      const res = await fetch(`/api/courses?teacherId=${teacherId}`);
+      const res = await authFetch(`/api/courses?teacherId=${teacherId}`);
       const data = await res.json();
       setCourses(data.courses || []);
     } catch (err) {
@@ -71,9 +72,8 @@ export default function AttendancePage() {
 
   const loadStudents = async (courseId: string) => {
     try {
-      const res = await fetch(`/api/enrollments?courseId=${courseId}`);
+      const res = await authFetch(`/api/enrollments?courseId=${courseId}`);
       const data = await res.json();
-      // Extract students from enrollments
       const enrolledStudents = data.enrollments?.map((e: { userName: string; userEmail: string; userId: string; userMacAddress?: string | null }) => ({
         id: e.userId,
         name: e.userName,
@@ -81,16 +81,10 @@ export default function AttendancePage() {
         macAddress: e.userMacAddress ?? null,
       })) || [];
       setStudents(enrolledStudents);
-      
-      // Initialize attendance (default to absent)
-      const initialAttendance: AttendanceRecord = {};
-      enrolledStudents.forEach((s: Student) => {
-        initialAttendance[s.id] = 'absent';
-      });
-      setAttendance(initialAttendance);
-      
-      // Load existing attendance for the date
-      loadAttendance(courseId, selectedDate);
+      // Default everyone to absent — loadAttendance will overwrite with saved records
+      const initial: AttendanceRecord = {};
+      enrolledStudents.forEach((s: Student) => { initial[s.id] = 'absent'; });
+      setAttendance(initial);
     } catch (err) {
       console.error('Failed to load students:', err);
     }
@@ -98,7 +92,7 @@ export default function AttendancePage() {
 
   const loadAttendance = async (courseId: string, date: string) => {
     try {
-      const res = await fetch(`/api/attendance?courseId=${courseId}&date=${date}`);
+      const res = await authFetch(`/api/attendance?courseId=${courseId}&date=${date}`);
       const data = await res.json();
       if (data.attendance?.records) {
         setAttendance(data.attendance.records);
@@ -108,17 +102,17 @@ export default function AttendancePage() {
     }
   };
 
+  // Load students when course changes
   useEffect(() => {
-    if (selectedCourse) {
-      loadStudents(selectedCourse);
-    }
+    if (selectedCourse) loadStudents(selectedCourse);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCourse]);
 
+  // Reload saved attendance when course or date changes
   useEffect(() => {
-    if (selectedCourse && selectedDate) {
-      loadAttendance(selectedCourse, selectedDate);
-    }
-  }, [selectedDate]);
+    if (selectedCourse && selectedDate) loadAttendance(selectedCourse, selectedDate);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCourse, selectedDate]);
 
   const handleAttendanceChange = (studentId: string, status: 'present' | 'absent' | 'late') => {
     setAttendance(prev => ({ ...prev, [studentId]: status }));
@@ -145,7 +139,7 @@ export default function AttendancePage() {
     setScanResult(null);
     setScanError('');
     try {
-      const res = await fetch('/api/attendance/network-scan');
+      const res = await authFetch('/api/attendance/network-scan');
       const data = await res.json();
       if (!res.ok) {
         setScanError(data.error || 'Network scan failed');
@@ -178,9 +172,8 @@ export default function AttendancePage() {
     
     setSaving(true);
     try {
-      const res = await fetch('/api/attendance', {
+      const res = await authFetch('/api/attendance', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           courseId: selectedCourse,
           date: selectedDate,

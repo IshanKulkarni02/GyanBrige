@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/api';
 
 interface Course {
   id: string;
@@ -36,7 +37,8 @@ export default function RecordLecturePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -67,9 +69,17 @@ export default function RecordLecturePage() {
     };
   }, [router]);
 
+  // Revoke stale blob URL to prevent memory leaks
+  useEffect(() => {
+    if (!recordedBlob) { setBlobUrl(null); return; }
+    const url = URL.createObjectURL(recordedBlob);
+    setBlobUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [recordedBlob]);
+
   const loadCourses = async (teacherId: string) => {
     try {
-      const res = await fetch(`/api/courses?teacherId=${teacherId}`);
+      const res = await authFetch(`/api/courses?teacherId=${teacherId}`);
       const data = await res.json();
       setCourses(data.courses || []);
     } catch (err) {
@@ -93,8 +103,9 @@ export default function RecordLecturePage() {
         videoPreviewRef.current.play();
       }
       
-      const mimeType = recordingType === 'video' ? 'video/webm' : 'audio/webm';
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const preferred = recordingType === 'video' ? 'video/webm' : 'audio/webm';
+      const mimeType = MediaRecorder.isTypeSupported(preferred) ? preferred : '';
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
       
@@ -105,7 +116,8 @@ export default function RecordLecturePage() {
       };
       
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mimeType });
+        const actualType = mediaRecorder.mimeType || mimeType || 'video/webm';
+        const blob = new Blob(chunksRef.current, { type: actualType });
         setRecordedBlob(blob);
         
         // Stop all tracks
@@ -179,23 +191,16 @@ export default function RecordLecturePage() {
     try {
       // Upload the recording
       const formData = new FormData();
-      const extension = recordingType === 'video' ? 'webm' : 'webm';
-      const filename = `recording-${Date.now()}.${extension}`;
+      const filename = `recording-${Date.now()}.webm`;
       formData.append('file', recordedBlob, filename);
 
-      const uploadRes = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
+      const uploadRes = await authFetch('/api/upload', { method: 'POST', body: formData });
       if (!uploadRes.ok) throw new Error('Upload failed');
-      
       const uploadData = await uploadRes.json();
 
       // Create the lecture
-      const lectureRes = await fetch('/api/lectures', {
+      const lectureRes = await authFetch('/api/lectures', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title,
           description: `Recorded ${recordingType} lecture`,
@@ -303,9 +308,9 @@ export default function RecordLecturePage() {
                   playsInline
                 />
               )}
-              {recordedBlob && !isRecording && (
-                <video 
-                  src={URL.createObjectURL(recordedBlob)} 
+              {blobUrl && !isRecording && (
+                <video
+                  src={blobUrl}
                   className="w-full aspect-video"
                   controls
                 />
@@ -314,11 +319,11 @@ export default function RecordLecturePage() {
           )}
 
           {/* Audio Playback */}
-          {recordingType === 'audio' && recordedBlob && !isRecording && (
+          {recordingType === 'audio' && blobUrl && !isRecording && (
             <div className="mb-6">
-              <audio 
-                src={URL.createObjectURL(recordedBlob)} 
-                controls 
+              <audio
+                src={blobUrl}
+                controls
                 className="w-full"
               />
             </div>
