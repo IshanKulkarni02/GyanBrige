@@ -179,8 +179,9 @@ export default function TeacherDashboard() {
           ) : (
             <div className="glass rounded-xl overflow-hidden">
               {myCourses.map((course, i) => (
-                <div
+                <Link
                   key={course.id}
+                  href={`/dashboard/teacher/course/${course.id}`}
                   className={`flex items-center gap-4 p-4 hover:bg-white/5 transition ${
                     i !== myCourses.length - 1 ? 'border-b border-white/10' : ''
                   }`}
@@ -192,8 +193,11 @@ export default function TeacherDashboard() {
                     <h4 className="font-medium">{course.name}</h4>
                     <p className="text-white/50 text-sm">{course.description}</p>
                   </div>
-                  <span className="text-white/40 text-sm">{course.lectureCount} lectures</span>
-                </div>
+                  <div className="text-right">
+                    <span className="text-white/70 text-sm">{course.lectureCount} lectures</span>
+                    <p className="text-white/30 text-xs">Manage →</p>
+                  </div>
+                </Link>
               ))}
             </div>
           )}
