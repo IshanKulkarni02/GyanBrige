@@ -214,10 +214,17 @@ export default function RecordLecturePage() {
       if (!lectureRes.ok) throw new Error('Failed to create lecture');
       const { lecture: savedLecture } = await lectureRes.json();
 
-      // Auto-generate notes in the background from the recording
+      // Auto-generate notes from the actual recording audio (background)
+      // Pass videoUrl + lectureId so the server transcribes the real audio via
+      // ffmpeg → Whisper instead of generating notes from the title alone.
       authFetch('/api/generate-notes', {
         method: 'POST',
-        body: JSON.stringify({ title, description: `Live recorded lecture` }),
+        body: JSON.stringify({
+          title,
+          description: `${recordingType === 'video' ? '🎥' : '🎤'} Live recorded lecture`,
+          videoUrl:   uploadData.url,
+          lectureId:  savedLecture?.id,
+        }),
       }).then(async r => {
         const d = await r.json();
         if (d.notes && savedLecture?.id) {
