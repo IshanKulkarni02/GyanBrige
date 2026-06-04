@@ -30,11 +30,19 @@ export default function TeacherCoursePage() {
   const [editedNotes,    setEditedNotes]    = useState('');
   const [savingNotes,    setSavingNotes]    = useState(false);
   const [regenNotes,     setRegenNotes]     = useState(false);
-  const [regenStatus,    setRegenStatus]    = useState('');
   // "also generate" toggles
   const [alsoChapters,   setAlsoChapters]   = useState(false);
   const [alsoQuiz,       setAlsoQuiz]       = useState(false);
   const [alsoQuizCount,  setAlsoQuizCount]  = useState(5);
+
+  // Real-time generation progress
+  interface ProgressStage { key: string; icon: string; label: string; status: 'pending'|'running'|'done'|'error'; detail: string; }
+  const [regenPct,     setRegenPct]     = useState(0);
+  const [regenStages,  setRegenStages]  = useState<ProgressStage[]>([]);
+  const [regenMsg,     setRegenMsg]     = useState('');
+  const [regenDetail,  setRegenDetail]  = useState('');
+  const [regenElapsed, setRegenElapsed] = useState(0);
+  const regenTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Quiz state
   const [quizModal,      setQuizModal]      = useState<string | null>(null); // lectureId
@@ -123,10 +131,36 @@ export default function TeacherCoursePage() {
 
   const regenerateNotes = async () => {
     if (!editingLecture) return;
+
+    // Build initial stage list based on what was requested
+    const initialStages: ProgressStage[] = [];
+    const hasVideo = !editingLecture.segments?.length && !!editingLecture.videoUrl;
+    if (hasVideo) {
+      initialStages.push({ key: 'extract',  icon: '🎬', label: 'Extract audio',    status: 'pending', detail: '' });
+      initialStages.push({ key: 'whisper',  icon: '🎙️', label: 'Transcribe audio', status: 'pending', detail: '' });
+    }
+    initialStages.push({ key: 'notes',    icon: '✏️', label: 'Generate notes',    status: 'pending', detail: '' });
+    if (alsoChapters) initialStages.push({ key: 'chapters', icon: '🔖', label: 'Detect bookmarks', status: 'pending', detail: '' });
+    if (alsoQuiz)     initialStages.push({ key: 'quiz',     icon: '🧠', label: 'Create quiz',      status: 'pending', detail: '' });
+
     setRegenNotes(true);
-    setRegenStatus('Transcribing…');
+    setRegenPct(2);
+    setRegenStages(initialStages);
+    setRegenMsg('Starting…');
+    setRegenDetail('');
+    setRegenElapsed(0);
+
+    // Elapsed-time counter
+    const startTime = Date.now();
+    regenTimerRef.current = setInterval(() => {
+      setRegenElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+
+    const setStage = (key: string, status: ProgressStage['status'], detail?: string) => {
+      setRegenStages(prev => prev.map(s => s.key === key ? { ...s, status, detail: detail ?? s.detail } : s));
+    };
+
     try {
-      // Always use generate-all so we can optionally also build quiz + chapters
       const res = await authFetch(`/api/lectures/${editingLecture.id}/generate-all`, {
         method: 'POST',
         body: JSON.stringify({
@@ -137,41 +171,112 @@ export default function TeacherCoursePage() {
           quizCount:      alsoQuizCount,
         }),
       });
-      const data = await res.json();
-      if (!res.ok && !data.notes) throw new Error(data.error || 'Generation failed');
 
-      setRegenStatus('Done!');
-      if (data.notes) setEditedNotes(data.notes);
-
-      // Update lecture in local state with new chapters if detected
-      if (data.chapters) {
-        setLectures(prev => prev.map(l =>
-          l.id === editingLecture.id ? { ...l, chapters: data.chapters } : l
-        ));
-      }
-      // Add quiz to local state
-      if (data.quiz) {
-        setLectureQuizzes(prev => ({
-          ...prev,
-          [editingLecture.id]: [...(prev[editingLecture.id] ?? []), data.quiz],
-        }));
+      // Non-streaming error (auth, validation)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `Error ${res.status}` }));
+        throw new Error(err.error || 'Generation failed');
       }
 
-      // Build summary toast
-      const src = data.transcriptSource as string;
-      const parts = ['Notes regenerated'];
-      if (src === 'video')   parts.push('video transcribed & saved');
-      if (data.chapters)     parts.push(`${data.chapters.length} chapters detected`);
-      if (data.quiz)         parts.push(`quiz created (${data.quiz.questions?.length ?? 0} Qs)`);
-      if (data.notesError)   toast.error(`Notes error: ${data.notesError}`);
-      if (data.chaptersError) toast.error(`Chapters error: ${data.chaptersError}`);
-      if (data.quizError)    toast.error(`Quiz error: ${data.quizError}`);
-      if (!data.notesError)  toast.success(parts.join(' · ') + ' ✓');
+      // Read SSE stream
+      const reader  = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let   buffer  = '';
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let ev: Record<string, unknown>;
+          try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+
+          const msg    = (ev.msg    as string) || '';
+          const detail = (ev.detail as string) || '';
+          const pct    = (ev.pct    as number) || 0;
+
+          if (pct)    setRegenPct(pct);
+          if (msg)    setRegenMsg(msg);
+          if (detail) setRegenDetail(detail);
+
+          switch (ev.type) {
+            // ── Transcript stages ──────────────────────────────────────────
+            case 'transcript_cached':
+              setStage('extract',  'done', 'Cached');
+              setStage('whisper',  'done', detail);
+              break;
+            case 'extract_start':
+              setStage('extract', 'running', detail);
+              break;
+            case 'extract_done':
+              setStage('extract', 'done', detail);
+              break;
+            case 'whisper_start':
+              setStage('whisper', 'running', detail);
+              break;
+            case 'whisper_chunk':
+              setStage('whisper', 'running', `Part ${ev.part} of ${ev.total}`);
+              break;
+            case 'whisper_done':
+              setStage('whisper', 'done', detail);
+              break;
+            // ── AI stages ─────────────────────────────────────────────────
+            case 'notes_start':
+              setStage('notes', 'running', detail);
+              break;
+            case 'notes_done':
+              setStage('notes', 'done', detail);
+              break;
+            case 'chapters_start':
+              setStage('chapters', 'running', detail);
+              break;
+            case 'chapters_done':
+              setStage('chapters', 'done', detail);
+              break;
+            case 'quiz_start':
+              setStage('quiz', 'running', detail);
+              break;
+            case 'quiz_done':
+              setStage('quiz', 'done', detail);
+              break;
+            // ── Final ─────────────────────────────────────────────────────
+            case 'complete': {
+              const data = ev;
+              if (data.notes)    setEditedNotes(data.notes as string);
+              if (data.chapters) setLectures(prev => prev.map(l =>
+                l.id === editingLecture.id ? { ...l, chapters: data.chapters as typeof l.chapters } : l
+              ));
+              if (data.quiz) setLectureQuizzes(prev => ({
+                ...prev,
+                [editingLecture.id]: [...(prev[editingLecture.id] ?? []), data.quiz as Quiz],
+              }));
+              const summaryParts = ['Done'];
+              if (data.transcriptSource === 'video') summaryParts.push('transcript saved');
+              if (data.chapters) summaryParts.push(`${(data.chapters as unknown[]).length} chapters`);
+              if (data.quiz)     summaryParts.push(`quiz (${(data.quiz as {questions?:unknown[]}).questions?.length ?? 0} Qs)`);
+              toast.success(summaryParts.join(' · ') + ' ✓');
+              if (data.notesError)    toast.error(`Notes: ${data.notesError}`);
+              if (data.chaptersError) toast.error(`Chapters: ${data.chaptersError}`);
+              if (data.quizError)     toast.error(`Quiz: ${data.quizError}`);
+              break;
+            }
+            case 'error':
+              throw new Error(ev.msg as string || 'Generation failed');
+          }
+        }
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Generation failed');
+      setRegenStages(prev => prev.map(s => s.status === 'running' ? { ...s, status: 'error' } : s));
     } finally {
+      if (regenTimerRef.current) clearInterval(regenTimerRef.current);
       setRegenNotes(false);
-      setRegenStatus('');
     }
   };
 
@@ -388,9 +493,62 @@ export default function TeacherCoursePage() {
             <button onClick={regenerateNotes} disabled={regenNotes}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 disabled:opacity-50 transition text-sm mb-3 w-full justify-center">
               {regenNotes
-                ? <><span className="animate-spin">⚙️</span> {regenStatus || 'Generating…'}</>
+                ? <><span className="animate-spin inline-block">⚙️</span> Generating…</>
                 : `🤖 Generate${alsoChapters || alsoQuiz ? ' All' : ' Notes'}`}
             </button>
+
+            {/* ── Real-time progress panel ───────────────────────────────── */}
+            {regenNotes && regenStages.length > 0 && (
+              <div className="mb-3 p-4 bg-white/5 border border-white/10 rounded-xl space-y-3">
+                {/* Headline */}
+                <div>
+                  <p className="text-sm font-medium text-white/90">{regenMsg}</p>
+                  {regenDetail && <p className="text-xs text-white/45 mt-0.5">{regenDetail}</p>}
+                </div>
+
+                {/* Progress bar */}
+                <div className="relative h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className="absolute inset-y-0 left-0 bg-gradient-to-r from-purple-500 to-emerald-400 rounded-full transition-all duration-700 ease-out"
+                    style={{ width: `${regenPct}%` }}
+                  />
+                </div>
+
+                {/* Percentage + elapsed */}
+                <div className="flex justify-between text-xs text-white/35">
+                  <span>{regenPct}%</span>
+                  <span>
+                    {regenElapsed >= 60
+                      ? `${Math.floor(regenElapsed / 60)}m ${regenElapsed % 60}s`
+                      : `${regenElapsed}s`} elapsed
+                  </span>
+                </div>
+
+                {/* Stage list */}
+                <div className="space-y-1.5 pt-1 border-t border-white/8">
+                  {regenStages.map(stage => (
+                    <div key={stage.key} className="flex items-start gap-2 text-xs">
+                      <span className={`mt-0.5 shrink-0 ${
+                        stage.status === 'done'    ? 'text-emerald-400' :
+                        stage.status === 'running' ? 'text-purple-400'  :
+                        stage.status === 'error'   ? 'text-red-400'     :
+                        'text-white/20'
+                      }`}>
+                        {stage.status === 'done'    ? '✓' :
+                         stage.status === 'running' ? '◉' :
+                         stage.status === 'error'   ? '✗' : '○'}
+                      </span>
+                      <span className={stage.status === 'pending' ? 'text-white/30' : 'text-white/80'}>
+                        {stage.icon} {stage.label}
+                      </span>
+                      {stage.detail && (
+                        <span className="text-white/35 ml-auto shrink-0">{stage.detail}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <textarea
               ref={notesRef}
