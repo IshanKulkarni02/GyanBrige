@@ -611,7 +611,6 @@ export default function UploadLecturePage() {
                 <span>{warning}</span>
               </div>
             )}
-            </>)}
           </div>
 
           {/* Notes */}
