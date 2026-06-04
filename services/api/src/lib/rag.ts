@@ -41,9 +41,18 @@ export function chunkTranscript(segments: TranscriptSegment[]): Chunk[] {
     approxTok += Math.ceil(seg.text.split(/\s+/).length * 1.3);
     if (approxTok >= CHUNK_TOK) {
       flush();
-      const overlap = buf.slice(Math.max(0, buf.length - CHUNK_OVERLAP / 5));
-      buf = [...overlap];
-      approxTok = overlap.join(' ').split(/\s+/).length;
+      // Walk back through segments until we've accumulated ~CHUNK_OVERLAP tokens
+      let overlapTok = 0;
+      let overlapStart = buf.length;
+      for (let i = buf.length - 1; i >= 0; i--) {
+        const tok = Math.ceil((buf[i]?.split(/\s+/).length ?? 0) * 1.3);
+        if (overlapTok + tok > CHUNK_OVERLAP) break;
+        overlapTok += tok;
+        overlapStart = i;
+      }
+      buf = buf.slice(overlapStart);
+      approxTok = overlapTok;
+      bufStart = seg.start;
     }
   }
   flush();

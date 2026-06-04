@@ -127,14 +127,22 @@ export const registerTests: FastifyPluginAsync = async (app) => {
     const existing = await prisma.testAttempt.findUnique({
       where: { testId_studentId: { testId, studentId: me.id } },
     });
-    if (existing && existing.status !== AttemptStatus.IN_PROGRESS && allowed <= 1)
-      throw new AppError(409, 'ALREADY_ATTEMPTED', 'Already submitted');
 
-    const attempt = existing
-      ? existing
-      : await prisma.testAttempt.create({
-          data: { testId, studentId: me.id, status: AttemptStatus.IN_PROGRESS },
-        });
+    let attempt;
+    if (!existing) {
+      attempt = await prisma.testAttempt.create({
+        data: { testId, studentId: me.id, status: AttemptStatus.IN_PROGRESS },
+      });
+    } else if (existing.status === AttemptStatus.IN_PROGRESS) {
+      attempt = existing;
+    } else if (allowed <= 1) {
+      throw new AppError(409, 'ALREADY_ATTEMPTED', 'No attempts remaining');
+    } else {
+      attempt = await prisma.testAttempt.update({
+        where: { id: existing.id },
+        data: { status: AttemptStatus.IN_PROGRESS, score: null, submittedAt: null },
+      });
+    }
 
     let questions = test.questions.map((q) => ({
       id: q.id,

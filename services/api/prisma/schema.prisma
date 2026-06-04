@@ -237,6 +237,7 @@ model Lecture {
   title               String
   mode                LectureMode @default(IN_PERSON)
   recordingUrl        String?
+  editedRecordingUrl  String?
   transcriptionJobId  String?
   createdAt           DateTime    @default(now())
 

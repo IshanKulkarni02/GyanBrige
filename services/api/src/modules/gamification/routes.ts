@@ -49,6 +49,11 @@ async function computeStats(userId: string): Promise<Stats> {
     seen.add(day);
   }
   let cursor = new Date();
+  // If user hasn't logged in today but did yesterday, keep streak alive
+  const todayStr = cursor.toISOString().slice(0, 10);
+  if (!seen.has(todayStr)) {
+    cursor = new Date(cursor.getTime() - 24 * 3600 * 1000);
+  }
   while (true) {
     const day = cursor.toISOString().slice(0, 10);
     if (seen.has(day)) {

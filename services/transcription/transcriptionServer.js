@@ -55,9 +55,9 @@ if (!fs.existsSync(CONFIG.uploadDir)) {
   fs.mkdirSync(CONFIG.uploadDir, { recursive: true });
 }
 
-// Middleware - CORS configured for local network access
+// Middleware
 app.use(cors({
-  origin: true, // Allow all origins in development
+  origin: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim()) : 'http://localhost:8081',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   credentials: true,
@@ -210,14 +210,15 @@ async function transcribeWithLocal(filePath, language) {
     // Cleanup
     fs.unlinkSync(outputPath);
     
+    const transcriptionData = Array.isArray(jsonOutput.transcription) ? jsonOutput.transcription : [];
     return {
-      text: jsonOutput.transcription?.map(s => s.text).join(' ') || '',
-      segments: jsonOutput.transcription?.map((seg, idx) => ({
+      text: transcriptionData.map(s => s.text).join(' ') || '',
+      segments: transcriptionData.map((seg, idx) => ({
         id: idx,
         start: seg.timestamps?.from ? parseTimestamp(seg.timestamps.from) : 0,
         end: seg.timestamps?.to ? parseTimestamp(seg.timestamps.to) : 0,
         text: seg.text,
-      })) || [],
+      })),
       language: jsonOutput.language || language,
       duration: jsonOutput.duration,
     };

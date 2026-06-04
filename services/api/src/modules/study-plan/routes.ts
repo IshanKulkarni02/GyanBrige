@@ -8,6 +8,7 @@ import { Redis } from 'ioredis';
 import { prisma } from '../../db.js';
 import { env } from '../../env.js';
 import { requireAuth } from '../../lib/role-guard.js';
+import { AppError } from '../../plugins/errors.js';
 
 const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
 const queue = new Queue('generate-study-plan', { connection });
@@ -25,6 +26,10 @@ export const registerStudyPlan: FastifyPluginAsync = async (app) => {
   app.post('/regenerate', async (req) => {
     const me = await requireAuth(req);
     const { courseId } = z.object({ courseId: z.string().uuid() }).parse(req.body);
+    const enrollment = await prisma.enrollment.findUnique({
+      where: { userId_courseId: { userId: me.id, courseId } },
+    });
+    if (!enrollment) throw new AppError(403, 'NOT_ENROLLED', 'Not enrolled in this course');
     const job = await queue.add('gen', { studentId: me.id, courseId });
     return { jobId: job.id };
   });

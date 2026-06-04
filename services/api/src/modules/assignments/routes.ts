@@ -86,8 +86,15 @@ export const registerAssignments: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/', async (req) => {
-    await requireRole(req, Role.TEACHER, Role.ADMIN, Role.STAFF);
+    const me = await requireRole(req, Role.TEACHER, Role.ADMIN, Role.STAFF);
     const body = createSchema.parse(req.body);
+    if (me.roles.includes(Role.TEACHER) && !me.roles.includes(Role.ADMIN) && !me.roles.includes(Role.STAFF)) {
+      const course = await prisma.course.findFirst({
+        where: { id: body.courseId, teachers: { some: { id: me.id } } },
+        select: { id: true },
+      });
+      if (!course) throw new AppError(403, 'FORBIDDEN', 'Not assigned to this course');
+    }
     return prisma.assignment.create({ data: body as never });
   });
 

@@ -62,7 +62,7 @@ export const registerLectureEditing: FastifyPluginAsync = async (app) => {
 
     await prisma.lecture.update({
       where: { id },
-      data: { recordingUrl: result.output },
+      data: { editedRecordingUrl: result.output },
     });
     return result;
   });

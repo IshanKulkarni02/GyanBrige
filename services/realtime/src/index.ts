@@ -38,7 +38,8 @@ async function main() {
       socket.data.userId = payload.id;
       socket.data.roles = payload.roles ?? [];
       next();
-    } catch {
+    } catch (err) {
+      console.error('[auth] invalid token from', socket.handshake.address, (err as Error).message);
       next(new Error('UNAUTHENTICATED'));
     }
   });

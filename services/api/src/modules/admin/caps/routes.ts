@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { CapScope, Role } from '@prisma/client';
 import { prisma } from '../../../db.js';
 import { requireRole } from '../../../lib/role-guard.js';
+import { AppError } from '../../../plugins/errors.js';
 
 const createSchema = z.object({
   scope: z.nativeEnum(CapScope),
@@ -25,7 +26,7 @@ export const registerCaps: FastifyPluginAsync = async (app) => {
     await requireRole(req, Role.ADMIN);
     const body = createSchema.parse(req.body);
     if (body.scope === CapScope.SUBJECT && !body.subjectId)
-      throw new Error('subjectId required for SUBJECT scope');
+      throw new AppError(400, 'SUBJECT_REQUIRED', 'subjectId required for SUBJECT scope');
     return prisma.attendanceCap.upsert({
       where: {
         scope_subjectId_periodStart: {
