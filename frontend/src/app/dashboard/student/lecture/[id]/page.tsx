@@ -7,6 +7,12 @@ import { authFetch } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface Chapter { startSec: number; title: string; }
+interface QuizQuestion {
+  id: string; order: number;
+  question: string; options: string[];
+  correctAnswer: number; explanation: string;
+}
+interface Quiz { id: string; title: string; questions?: QuizQuestion[]; }
 interface Lecture {
   id: string; courseId: string; title: string; description: string;
   videoUrl?: string; duration: number; notes: string; order: number;
@@ -24,18 +30,19 @@ function fmtTime(sec: number): string {
 }
 
 export default function LecturePlayerPage() {
-  const router   = useRouter();
-  const params   = useParams();
+  const router    = useRouter();
+  const params    = useParams();
   const lectureId = params.id as string;
 
-  const [user, setUser]       = useState<UserData | null>(null);
-  const [lecture, setLecture] = useState<Lecture | null>(null);
-  const [course, setCourse]   = useState<Course | null>(null);
+  const [user,    setUser]    = useState<UserData | null>(null);
+  const [lecture, setLecture] = useState<Lecture  | null>(null);
+  const [course,  setCourse]  = useState<Course   | null>(null);
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab]         = useState<'notes' | 'chapters'>('chapters');
-  const [completed, setCompleted] = useState(false);
+  const [tab,     setTab]     = useState<'chapters' | 'notes' | 'quiz'>('chapters');
+  const [completed,     setCompleted]     = useState(false);
   const [videoDuration, setVideoDuration] = useState(0);
-  const [currentTime, setCurrentTime]     = useState(0);
+  const [currentTime,   setCurrentTime]   = useState(0);
   const [activeChapter, setActiveChapter] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -49,7 +56,6 @@ export default function LecturePlayerPage() {
     loadLecture();
   }, [router, lectureId]);
 
-  // Update active chapter as video plays
   useEffect(() => {
     if (!lecture?.chapters?.length) return;
     const idx = [...lecture.chapters].reverse().findIndex(c => c.startSec <= currentTime);
@@ -58,14 +64,20 @@ export default function LecturePlayerPage() {
 
   const loadLecture = async () => {
     try {
-      const res  = await authFetch(`/api/lectures/${lectureId}`);
-      const data = await res.json();
-      setLecture(data.lecture);
-      if (data.lecture?.courseId) {
-        const cr   = await authFetch(`/api/courses/${data.lecture.courseId}`);
-        const cd   = await cr.json();
-        setCourse(cd.course);
+      const [lectureRes, quizRes] = await Promise.all([
+        authFetch(`/api/lectures/${lectureId}`),
+        authFetch(`/api/quizzes?lectureId=${lectureId}`),
+      ]);
+      const lectureData = await lectureRes.json();
+      const quizData    = await quizRes.json();
+      setLecture(lectureData.lecture);
+      setQuizzes(quizData.quizzes ?? []);
+      if (lectureData.lecture?.courseId) {
+        const cr = await authFetch(`/api/courses/${lectureData.lecture.courseId}`);
+        setCourse((await cr.json()).course);
       }
+      // Default to chapters if they exist, else notes
+      if (!(lectureData.lecture?.chapters?.length)) setTab('notes');
     } catch { toast.error('Failed to load lecture'); }
     finally  { setLoading(false); }
   };
@@ -106,6 +118,15 @@ export default function LecturePlayerPage() {
 
   const chapters = lecture.chapters ?? [];
 
+  // Build tab list dynamically
+  type TabId = 'chapters' | 'notes' | 'quiz';
+  const tabs: { id: TabId; label: string; show: boolean }[] = [
+    { id: 'chapters', label: `🔖 Chapters (${chapters.length})`, show: chapters.length > 0 },
+    { id: 'notes',    label: '📝 Notes',                        show: true },
+    { id: 'quiz',     label: `🧠 Quiz (${quizzes.length})`,     show: quizzes.length > 0 },
+  ];
+  const visibleTabs = tabs.filter(t => t.show);
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -115,12 +136,10 @@ export default function LecturePlayerPage() {
             <Link href={course ? `/dashboard/student/course/${course.id}` : '/dashboard/student'} className="text-white/60 hover:text-white">← Back</Link>
             {course && <div className="flex items-center gap-2"><span className="text-xl">{course.icon}</span><span className="text-white/60 hidden sm:block">{course.name}</span></div>}
           </div>
-          <div className="flex items-center gap-3">
-            {!completed
-              ? <button onClick={markAsComplete} className="btn-primary px-4 py-2 text-sm">✓ Mark Complete</button>
-              : <span className="text-emerald-400 text-sm flex items-center gap-1">✅ Completed</span>
-            }
-          </div>
+          {!completed
+            ? <button onClick={markAsComplete} className="btn-primary px-4 py-2 text-sm">✓ Mark Complete</button>
+            : <span className="text-emerald-400 text-sm flex items-center gap-1">✅ Completed</span>
+          }
         </div>
       </div>
 
@@ -146,27 +165,20 @@ export default function LecturePlayerPage() {
                 <div className="text-center"><span className="text-5xl block mb-3">🎬</span><p>No video for this lecture</p></div>
               </div>
             )}
-
-            {/* Chapter markers on scrubber overlay */}
             {chapters.length > 1 && videoDuration > 0 && (
               <div className="absolute bottom-[52px] left-0 right-0 h-1 pointer-events-none px-3">
                 {chapters.slice(1).map((ch, i) => (
-                  <div
-                    key={i}
-                    className="absolute top-0 w-0.5 h-full bg-white/60 rounded"
-                    style={{ left: `${(ch.startSec / videoDuration) * 100}%` }}
-                  />
+                  <div key={i} className="absolute top-0 w-0.5 h-full bg-white/60 rounded"
+                    style={{ left: `${(ch.startSec / videoDuration) * 100}%` }} />
                 ))}
               </div>
             )}
           </div>
 
-          {/* Title + info */}
+          {/* Title */}
           <div className="p-5">
             <h1 className="text-xl font-bold mb-1">{lecture.title}</h1>
             <p className="text-white/50 text-sm mb-3">{lecture.description}</p>
-
-            {/* Active chapter badge */}
             {chapters.length > 0 && (
               <div className="inline-flex items-center gap-2 glass px-3 py-1.5 rounded-full text-sm">
                 <span className="text-emerald-400">▶</span>
@@ -177,45 +189,37 @@ export default function LecturePlayerPage() {
           </div>
 
           {/* Mobile tab switcher */}
-          <div className="lg:hidden flex border-t border-white/10">
-            {chapters.length > 0 && (
-              <button onClick={() => setTab('chapters')} className={`flex-1 py-3 text-sm font-medium ${tab === 'chapters' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-white/50'}`}>
-                🔖 Chapters ({chapters.length})
+          <div className="lg:hidden flex border-t border-white/10 overflow-x-auto">
+            {visibleTabs.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`flex-1 py-3 text-sm font-medium whitespace-nowrap px-4 ${tab === t.id ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-white/50'}`}>
+                {t.label}
               </button>
-            )}
-            <button onClick={() => setTab('notes')} className={`flex-1 py-3 text-sm font-medium ${tab === 'notes' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-white/50'}`}>
-              📝 Notes
-            </button>
+            ))}
           </div>
 
           {/* Mobile panel */}
           <div className="lg:hidden overflow-y-auto">
-            {tab === 'chapters' && chapters.length > 0 && (
-              <ChapterList chapters={chapters} activeChapter={activeChapter} onSeek={seekToChapter} videoDuration={videoDuration} />
-            )}
-            {tab === 'notes' && <NotesPanel notes={lecture.notes} />}
+            {tab === 'chapters' && <ChapterList chapters={chapters} activeChapter={activeChapter} onSeek={seekToChapter} videoDuration={videoDuration} />}
+            {tab === 'notes'    && <NotesPanel notes={lecture.notes} />}
+            {tab === 'quiz'     && <QuizPanel quizzes={quizzes} />}
           </div>
         </div>
 
         {/* ── Right panel (desktop) ── */}
         <div className="hidden lg:flex lg:w-80 xl:w-96 flex-col border-l border-white/10 bg-black/30 shrink-0">
-          {/* Tab bar */}
-          <div className="flex border-b border-white/10 shrink-0">
-            {chapters.length > 0 && (
-              <button onClick={() => setTab('chapters')} className={`flex-1 py-3 text-sm font-medium transition ${tab === 'chapters' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-white/40 hover:text-white/70'}`}>
-                🔖 Chapters
+          <div className="flex border-b border-white/10 shrink-0 overflow-x-auto">
+            {visibleTabs.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`flex-1 py-3 text-sm font-medium whitespace-nowrap px-2 transition ${tab === t.id ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-white/40 hover:text-white/70'}`}>
+                {t.label}
               </button>
-            )}
-            <button onClick={() => setTab('notes')} className={`flex-1 py-3 text-sm font-medium transition ${tab === 'notes' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-white/40 hover:text-white/70'}`}>
-              📝 Notes
-            </button>
+            ))}
           </div>
-
           <div className="flex-1 overflow-y-auto">
-            {tab === 'chapters' && chapters.length > 0 && (
-              <ChapterList chapters={chapters} activeChapter={activeChapter} onSeek={seekToChapter} videoDuration={videoDuration} />
-            )}
-            {(tab === 'notes' || chapters.length === 0) && <NotesPanel notes={lecture.notes} />}
+            {tab === 'chapters' && <ChapterList chapters={chapters} activeChapter={activeChapter} onSeek={seekToChapter} videoDuration={videoDuration} />}
+            {(tab === 'notes' || chapters.length === 0) && tab !== 'quiz' && <NotesPanel notes={lecture.notes} />}
+            {tab === 'quiz'     && <QuizPanel quizzes={quizzes} />}
           </div>
         </div>
       </div>
@@ -223,7 +227,7 @@ export default function LecturePlayerPage() {
   );
 }
 
-// ── Chapter list component ────────────────────────────────────────────────────
+// ── Chapter list ──────────────────────────────────────────────────────────────
 
 function ChapterList({ chapters, activeChapter, onSeek, videoDuration }: {
   chapters: Chapter[]; activeChapter: number; onSeek: (ch: Chapter) => void; videoDuration: number;
@@ -234,27 +238,16 @@ function ChapterList({ chapters, activeChapter, onSeek, videoDuration }: {
         const next     = chapters[i + 1];
         const duration = next ? next.startSec - ch.startSec : (videoDuration ? videoDuration - ch.startSec : null);
         const isActive = i === activeChapter;
-
         return (
-          <button
-            key={i}
-            onClick={() => onSeek(ch)}
-            className={`w-full flex items-center gap-3 px-4 py-3 text-left transition hover:bg-white/5 ${isActive ? 'bg-emerald-500/10' : ''}`}
-          >
-            {/* Chapter number */}
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${isActive ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/50'}`}>
-              {i + 1}
-            </div>
-
-            {/* Info */}
+          <button key={i} onClick={() => onSeek(ch)}
+            className={`w-full flex items-center gap-3 px-4 py-3 text-left transition hover:bg-white/5 ${isActive ? 'bg-emerald-500/10' : ''}`}>
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${isActive ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/50'}`}>{i + 1}</div>
             <div className="flex-1 min-w-0">
               <p className={`text-sm font-medium truncate ${isActive ? 'text-emerald-400' : 'text-white/80'}`}>{ch.title}</p>
               <p className="text-xs text-white/40 mt-0.5">
-                {fmtTime(ch.startSec)}
-                {duration ? <span className="ml-1">· {Math.round(duration / 60)} min</span> : null}
+                {fmtTime(ch.startSec)}{duration ? <span className="ml-1">· {Math.round(duration / 60)} min</span> : null}
               </p>
             </div>
-
             {isActive && <span className="text-emerald-400 text-xs shrink-0">▶ Now</span>}
           </button>
         );
@@ -263,16 +256,12 @@ function ChapterList({ chapters, activeChapter, onSeek, videoDuration }: {
   );
 }
 
-// ── Notes panel component ─────────────────────────────────────────────────────
+// ── Notes panel ───────────────────────────────────────────────────────────────
 
 function NotesPanel({ notes }: { notes: string }) {
   if (!notes) return (
-    <div className="p-6 text-center">
-      <span className="text-4xl block mb-3">📝</span>
-      <p className="text-white/40 text-sm">No notes for this lecture.</p>
-    </div>
+    <div className="p-6 text-center"><span className="text-4xl block mb-3">📝</span><p className="text-white/40 text-sm">No notes for this lecture.</p></div>
   );
-
   return (
     <div className="p-5 space-y-2">
       {notes.split('\n').map((line, i) => {
@@ -284,6 +273,171 @@ function NotesPanel({ notes }: { notes: string }) {
         if (line.trim())             return <p  key={i} className="text-white/60 text-sm">{line}</p>;
         return null;
       })}
+    </div>
+  );
+}
+
+// ── Quiz panel ────────────────────────────────────────────────────────────────
+
+function QuizPanel({ quizzes }: { quizzes: Quiz[] }) {
+  const [activeQuiz,  setActiveQuiz]  = useState<Quiz | null>(null);
+  const [answers,     setAnswers]     = useState<Record<number, number>>({});
+  const [submitted,   setSubmitted]   = useState(false);
+
+  if (!quizzes.length) return (
+    <div className="p-6 text-center">
+      <span className="text-4xl block mb-3">🧠</span>
+      <p className="text-white/40 text-sm">No quizzes for this lecture yet.</p>
+    </div>
+  );
+
+  // ── Quiz list ───────────────────────────────────────────────────────────────
+  if (!activeQuiz) return (
+    <div className="p-4 space-y-3">
+      <p className="text-xs text-white/40 mb-4">Test your understanding of this lecture:</p>
+      {quizzes.map(quiz => (
+        <button key={quiz.id} onClick={() => { setActiveQuiz(quiz); setAnswers({}); setSubmitted(false); }}
+          className="w-full glass rounded-xl p-4 text-left hover:bg-white/5 transition group">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="font-medium text-sm group-hover:text-emerald-400 transition">{quiz.title}</p>
+              <p className="text-white/40 text-xs mt-1">
+                {quiz.questions?.length ?? 0} question{(quiz.questions?.length ?? 0) !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <span className="text-white/30 group-hover:text-emerald-400 transition mt-0.5">▶</span>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+
+  const questions = activeQuiz.questions ?? [];
+  const answered  = Object.keys(answers).length;
+  const score     = submitted
+    ? questions.filter((q, i) => answers[i] === q.correctAnswer).length
+    : 0;
+
+  // ── Taking quiz / results ───────────────────────────────────────────────────
+  return (
+    <div className="flex flex-col h-full">
+      {/* Quiz header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 shrink-0">
+        <button onClick={() => setActiveQuiz(null)} className="text-white/40 hover:text-white text-lg leading-none">←</button>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{activeQuiz.title}</p>
+          <p className="text-xs text-white/40">{questions.length} questions</p>
+        </div>
+        {submitted && (
+          <div className={`text-xs font-bold px-2 py-1 rounded-full ${score / questions.length >= 0.7 ? 'bg-emerald-500/20 text-emerald-400' : score / questions.length >= 0.5 ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>
+            {score}/{questions.length}
+          </div>
+        )}
+      </div>
+
+      {/* Score banner (after submit) */}
+      {submitted && (
+        <div className={`mx-4 mt-4 rounded-xl p-4 text-center ${score === questions.length ? 'bg-emerald-500/15 border border-emerald-500/30' : score / questions.length >= 0.7 ? 'bg-blue-500/15 border border-blue-500/30' : 'bg-amber-500/15 border border-amber-500/30'}`}>
+          <p className="text-2xl font-bold mb-1">
+            {score === questions.length ? '🎉' : score / questions.length >= 0.7 ? '👍' : '📚'}
+            {' '}{Math.round((score / questions.length) * 100)}%
+          </p>
+          <p className="text-sm text-white/70">
+            {score === questions.length ? 'Perfect score!' : score / questions.length >= 0.7 ? 'Good job!' : 'Keep studying!'}
+            {' '}{score} of {questions.length} correct
+          </p>
+          <button onClick={() => { setAnswers({}); setSubmitted(false); }}
+            className="mt-3 text-xs text-white/50 hover:text-white underline">Retry quiz</button>
+        </div>
+      )}
+
+      {/* Questions */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        {questions.map((q, qi) => {
+          const selected  = answers[qi];
+          const isCorrect = submitted && selected === q.correctAnswer;
+          const isWrong   = submitted && selected !== undefined && selected !== q.correctAnswer;
+
+          return (
+            <div key={q.id} className={`rounded-xl p-4 border transition ${
+              !submitted ? 'border-white/10 bg-white/3' :
+              isCorrect  ? 'border-emerald-500/40 bg-emerald-500/8' :
+              isWrong    ? 'border-red-500/40 bg-red-500/8' :
+              'border-white/10 bg-white/3'
+            }`}>
+              {/* Question number + text */}
+              <div className="flex gap-2 mb-3">
+                <span className="text-xs font-bold text-white/30 shrink-0 mt-0.5">Q{qi + 1}</span>
+                <p className="text-sm text-white/90 leading-relaxed">{q.question}</p>
+              </div>
+
+              {/* Options */}
+              <div className="space-y-2">
+                {q.options.map((opt, oi) => {
+                  const isSelected   = selected === oi;
+                  const isThisCorrect = q.correctAnswer === oi;
+                  let optStyle = 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20';
+                  if (!submitted && isSelected) optStyle = 'border-purple-500/60 bg-purple-500/15';
+                  if (submitted && isThisCorrect) optStyle = 'border-emerald-500/60 bg-emerald-500/12';
+                  if (submitted && isSelected && !isThisCorrect) optStyle = 'border-red-500/60 bg-red-500/12';
+
+                  return (
+                    <button key={oi} disabled={submitted}
+                      onClick={() => setAnswers(prev => ({ ...prev, [qi]: oi }))}
+                      className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border text-sm transition ${optStyle} disabled:cursor-default`}>
+                      {/* Circle indicator */}
+                      <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 text-xs font-bold ${
+                        submitted && isThisCorrect ? 'border-emerald-500 bg-emerald-500 text-white' :
+                        submitted && isSelected && !isThisCorrect ? 'border-red-500 bg-red-500 text-white' :
+                        isSelected ? 'border-purple-400 bg-purple-500 text-white' :
+                        'border-white/20'
+                      }`}>
+                        {submitted && isThisCorrect ? '✓' :
+                         submitted && isSelected && !isThisCorrect ? '✗' :
+                         isSelected ? '•' : ''}
+                      </span>
+                      <span className={submitted && isThisCorrect ? 'text-emerald-300' : submitted && isSelected && !isThisCorrect ? 'text-red-300' : 'text-white/80'}>
+                        {opt}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Explanation (shown after submit) */}
+              {submitted && q.explanation && (
+                <div className="mt-3 pt-3 border-t border-white/10 flex gap-2">
+                  <span className="text-xs shrink-0 mt-0.5">💡</span>
+                  <p className="text-xs text-white/55 leading-relaxed">{q.explanation}</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Submit bar */}
+      {!submitted && (
+        <div className="px-4 py-3 border-t border-white/10 shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-white/40">{answered} of {questions.length} answered</span>
+            <span className="text-xs text-white/40">{questions.length - answered} remaining</span>
+          </div>
+          {/* Progress bar */}
+          <div className="h-1 bg-white/10 rounded-full overflow-hidden mb-3">
+            <div className="h-full bg-purple-500 rounded-full transition-all"
+              style={{ width: `${questions.length ? (answered / questions.length) * 100 : 0}%` }} />
+          </div>
+          <button
+            disabled={answered < questions.length}
+            onClick={() => setSubmitted(true)}
+            className="w-full py-2.5 rounded-xl bg-purple-500/20 text-purple-300 text-sm font-medium hover:bg-purple-500/30 transition disabled:opacity-40 disabled:cursor-not-allowed">
+            {answered < questions.length
+              ? `Answer all ${questions.length - answered} remaining question${questions.length - answered !== 1 ? 's' : ''}`
+              : '🧠 Submit quiz'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
