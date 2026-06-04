@@ -132,11 +132,10 @@ export default function TeacherCoursePage() {
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error);
       setEditedNotes(data.notes);
-      if (data.transcriptUsed) {
-        toast.success('Notes regenerated from lecture transcript — review and save');
-      } else {
-        toast.warning('No transcript stored — notes generated from title only. For accurate notes, use "Detect Chapters" with the video file which also saves the transcript.');
-      }
+      const src = data.transcriptSource as string;
+      if (src === 'stored')       toast.success('Notes regenerated from stored transcript ✓');
+      else if (src === 'video')   toast.success('Notes regenerated — video transcribed from server ✓ (transcript saved for next time)');
+      else                        toast.warning('No video found — notes generated from title only. Upload the video for accurate notes.');
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Regeneration failed'); }
     finally { setRegenNotes(false); }
   };
@@ -324,9 +323,11 @@ export default function TeacherCoursePage() {
                 {regenNotes ? <><span className="animate-spin">⚙️</span> Regenerating…</> : '🤖 Regenerate AI Notes'}
               </button>
               {editingLecture.segments?.length ? (
-                <span className="text-emerald-400 text-xs">✓ transcript stored — will use real lecture content</span>
+                <span className="text-emerald-400 text-xs">✓ transcript stored</span>
+              ) : editingLecture.videoUrl ? (
+                <span className="text-blue-400 text-xs">📹 will transcribe video from server</span>
               ) : (
-                <span className="text-amber-400 text-xs">⚠️ no transcript — will generate from title only (may be inaccurate). Use "Detect Chapters" with the video file to store the real transcript first.</span>
+                <span className="text-white/40 text-xs">no video — uses title only</span>
               )}
             </div>
 

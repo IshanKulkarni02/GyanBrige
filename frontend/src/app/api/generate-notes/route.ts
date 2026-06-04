@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { settings as dbSettings, lectures } from '@/lib/db';
+import { readFileSync, existsSync } from 'fs';
+import path from 'path';
 
 // Whisper hard limit per request — we split larger files into chunks
 const WHISPER_CHUNK_BYTES = 24 * 1024 * 1024; // 24 MB (1 MB headroom)
@@ -65,6 +67,7 @@ export async function POST(request: NextRequest) {
     let description = '';
     let transcript = '';
     let audioFile: File | null = null;
+    let transcriptSource: 'stored' | 'video' | 'audio_upload' | 'none' = 'none';
 
     const contentType = request.headers.get('content-type') || '';
 
@@ -79,13 +82,32 @@ export async function POST(request: NextRequest) {
       description = body.description || '';
       transcript  = body.transcript  || '';
 
-      // If a lectureId is provided, pull the stored transcript segments from DB
-      // so regeneration uses the real content, not a hallucination from the title
+      // Resolve transcript for regeneration requests
       if (!transcript && body.lectureId) {
         const lec = lectures.getById(body.lectureId);
+
         if (lec?.segments?.length) {
+          // 1. Best case: stored Whisper segments from a previous run
           transcript = lec.segments.map((s: { text: string }) => s.text).join(' ');
+          transcriptSource = 'stored';
+        } else if (lec?.videoUrl && openaiKey) {
+          // 2. No stored segments but lecture has a video — transcribe it server-side
+          const videoPath = path.join(process.cwd(), 'public', lec.videoUrl);
+          if (existsSync(videoPath)) {
+            const ext  = path.extname(lec.videoUrl).slice(1) || 'mp4';
+            const buf  = readFileSync(videoPath);
+            const file = new File([buf], `lecture.${ext}`, { type: `video/${ext}` });
+            transcript = await transcribeAudio(file, openaiKey);
+            transcriptSource = 'video';
+            // Save as a simple segment so future regenerations are instant
+            if (transcript) {
+              lectures.update(lec.id, {
+                segments: [{ start: 0, end: lec.duration * 60, text: transcript }],
+              });
+            }
+          }
         }
+        // 3. Fallback: title + description only (transcriptSource stays 'none')
       }
     }
 
@@ -103,6 +125,7 @@ export async function POST(request: NextRequest) {
       }
       // Large files are automatically split into 24 MB chunks
       transcript = await transcribeAudio(audioFile, openaiKey);
+      transcriptSource = 'audio_upload';
     }
 
     // Ollama path requires a pre-built transcript
@@ -183,7 +206,7 @@ Notes:`;
       if (!notes) throw new Error('OpenAI returned an empty response.');
     }
 
-    return NextResponse.json({ success: true, notes, transcriptUsed: !!transcript });
+    return NextResponse.json({ success: true, notes, transcriptSource });
   } catch (error) {
     console.error('Note generation error:', error);
     const message = error instanceof Error ? error.message : 'Failed to generate notes';
