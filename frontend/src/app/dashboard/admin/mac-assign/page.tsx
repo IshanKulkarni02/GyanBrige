@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/api';
 
 interface ScannedDevice {
   mac: string;
@@ -41,7 +42,7 @@ export default function MacAssignPage() {
   }, [router]);
 
   const loadStudents = async () => {
-    const res = await fetch('/api/users');
+    const res = await authFetch('/api/users');
     const data = await res.json();
     setStudents((data.users || []).filter((u: Student & { role: string }) => u.role === 'student'));
   };
@@ -51,7 +52,7 @@ export default function MacAssignPage() {
     setScanError('');
     setDevices([]);
     try {
-      const res = await fetch('/api/attendance/network-scan');
+      const res = await authFetch('/api/attendance/network-scan');
       const data = await res.json();
       if (!res.ok) { setScanError(data.error || 'Scan failed'); return; }
       setDevices(data.devices || []);
@@ -68,7 +69,7 @@ export default function MacAssignPage() {
   const assignMac = async (mac: string, studentId: string) => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/users/${studentId}`, {
+      const res = await authFetch(`/api/users/${studentId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ macAddress: mac }),
@@ -93,7 +94,7 @@ export default function MacAssignPage() {
   const unassignMac = async (studentId: string) => {
     setSaving(true);
     try {
-      await fetch(`/api/users/${studentId}`, {
+      await authFetch(`/api/users/${studentId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ macAddress: null }),

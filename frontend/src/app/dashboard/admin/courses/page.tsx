@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/api';
 
 interface Course {
   id: string;
@@ -53,7 +54,7 @@ export default function CoursesPage() {
 
   const loadCourses = async () => {
     try {
-      const res = await fetch('/api/courses');
+      const res = await authFetch('/api/courses');
       const data = await res.json();
       setCourses(data.courses || []);
     } catch (err) {
@@ -65,7 +66,7 @@ export default function CoursesPage() {
 
   const loadTeachers = async () => {
     try {
-      const res = await fetch('/api/users');
+      const res = await authFetch('/api/users');
       const data = await res.json();
       setTeachers(data.users?.filter((u: { role: string }) => u.role === 'teacher') || []);
     } catch (err) {
@@ -80,7 +81,7 @@ export default function CoursesPage() {
   const createCourse = async () => {
     if (!newName || !newTeacherId) return;
     try {
-      await fetch('/api/courses', {
+      await authFetch('/api/courses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -102,7 +103,7 @@ export default function CoursesPage() {
   const updateCourse = async () => {
     if (!editingCourse) return;
     try {
-      await fetch(`/api/courses/${editingCourse.id}`, {
+      await authFetch(`/api/courses/${editingCourse.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -122,7 +123,7 @@ export default function CoursesPage() {
   const deleteCourse = async (courseId: string) => {
     if (!confirm('Delete this course?')) return;
     try {
-      await fetch(`/api/courses/${courseId}`, { method: 'DELETE' });
+      await authFetch(`/api/courses/${courseId}`, { method: 'DELETE' });
       loadCourses();
     } catch (err) {
       console.error('Failed to delete course:', err);

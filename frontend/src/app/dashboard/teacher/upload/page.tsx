@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/api';
 
 interface Course {
   id: string;
@@ -54,7 +55,7 @@ export default function UploadLecturePage() {
 
   const loadCourses = async (teacherId: string) => {
     try {
-      const res = await fetch(`/api/courses?teacherId=${teacherId}`);
+      const res = await authFetch(`/api/courses?teacherId=${teacherId}`);
       const data = await res.json();
       setCourses(data.courses || []);
     } catch (err) {
@@ -76,7 +77,7 @@ export default function UploadLecturePage() {
       formData.append('title', title);
       formData.append('description', description);
       formData.append('audio', videoFile);
-      res = await fetch('/api/generate-notes', {
+      res = await authFetch('/api/generate-notes', {
         method: 'POST',
         headers: {
           'x-use-local-ai': 'false',
@@ -89,7 +90,7 @@ export default function UploadLecturePage() {
       // Transcribe first with Whisper, then send transcript to Ollama
       const audioFormData = new FormData();
       audioFormData.append('file', videoFile);
-      const transcribeRes = await fetch('/api/transcribe', {
+      const transcribeRes = await authFetch('/api/transcribe', {
         method: 'POST',
         headers: { 'x-openai-key': settings.openaiKey || '' },
         body: audioFormData,
@@ -98,7 +99,7 @@ export default function UploadLecturePage() {
       if (!transcribeData.transcript) {
         throw new Error(transcribeData.error || 'Transcription failed — set an OpenAI key in Admin → AI Settings for Whisper.');
       }
-      res = await fetch('/api/generate-notes', {
+      res = await authFetch('/api/generate-notes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -108,7 +109,7 @@ export default function UploadLecturePage() {
         body: JSON.stringify({ title, description, transcript: transcribeData.transcript }),
       });
     } else {
-      res = await fetch('/api/generate-notes', {
+      res = await authFetch('/api/generate-notes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -195,7 +196,7 @@ export default function UploadLecturePage() {
           formData.append('uploadId', uploadId);
           formData.append('originalName', videoFile.name);
           
-          const res = await fetch('/api/upload', {
+          const res = await authFetch('/api/upload', {
             method: 'POST',
             body: formData,
           });
@@ -225,7 +226,7 @@ export default function UploadLecturePage() {
     formData.append('file', videoFile);
     
     try {
-      const res = await fetch('/api/upload', {
+      const res = await authFetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
@@ -278,7 +279,7 @@ export default function UploadLecturePage() {
         }
       }
 
-      const res = await fetch('/api/lectures', {
+      const res = await authFetch('/api/lectures', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

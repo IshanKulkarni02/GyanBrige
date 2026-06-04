@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { authFetch } from '@/lib/api';
 
 interface Lecture {
   id: string;
@@ -57,12 +58,12 @@ export default function LecturePlayerPage() {
 
   const loadLecture = async () => {
     try {
-      const res = await fetch(`/api/lectures/${lectureId}`);
+      const res = await authFetch(`/api/lectures/${lectureId}`);
       const data = await res.json();
       setLecture(data.lecture);
       
       if (data.lecture?.courseId) {
-        const courseRes = await fetch(`/api/courses/${data.lecture.courseId}`);
+        const courseRes = await authFetch(`/api/courses/${data.lecture.courseId}`);
         const courseData = await courseRes.json();
         setCourse(courseData.course);
       }
@@ -77,7 +78,7 @@ export default function LecturePlayerPage() {
     if (!user || !lecture || !course) return;
     
     try {
-      await fetch('/api/progress', {
+      await authFetch('/api/progress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
