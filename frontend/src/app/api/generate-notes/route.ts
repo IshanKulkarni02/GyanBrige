@@ -1,11 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { settings as dbSettings, lectures } from '@/lib/db';
 import { createReadStream, existsSync, statSync } from 'fs';
+import { unlink } from 'fs/promises';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { tmpdir } from 'os';
 import path from 'path';
 import { Readable } from 'stream';
+import { logRoute } from '@/lib/logger';
+
+export const maxDuration = 3600;
+
+const execFileAsync = promisify(execFile);
 
 // Whisper hard limit per request — we split larger files into chunks
 const WHISPER_CHUNK_BYTES = 24 * 1024 * 1024; // 24 MB (1 MB headroom)
+
+/** Use ffmpeg to extract 16 kHz mono MP3 from any video/audio file. */
+async function extractAudio(videoPath: string): Promise<string> {
+  const tmpAudio = path.join(tmpdir(), `gyanbrige-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`);
+  await execFileAsync('ffmpeg', [
+    '-i', videoPath,
+    '-vn', '-ar', '16000', '-ac', '1',
+    '-acodec', 'libmp3lame', '-q:a', '4',
+    '-y', tmpAudio,
+  ]);
+  return tmpAudio;
+}
+
+/** Transcribe a server-side video file via ffmpeg → Whisper (chunked if needed). */
+async function transcribeVideoFile(videoPath: string, openaiKey: string, language = 'auto'): Promise<string> {
+  const audioPath = await extractAudio(videoPath);
+  try {
+    const { size } = statSync(audioPath);
+    const parts: string[] = [];
+    let offset = 0, part = 0;
+    while (offset < size) {
+      const end = Math.min(offset + WHISPER_CHUNK_BYTES - 1, size - 1);
+      const stream = createReadStream(audioPath, { start: offset, end });
+      const bufs: Buffer[] = [];
+      for await (const c of Readable.from(stream)) bufs.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+      const blob = new Blob([Buffer.concat(bufs)], { type: 'audio/mpeg' });
+      const fd = new FormData();
+      fd.append('file', blob, `part${part}.mp3`);
+      fd.append('model', 'whisper-1');
+      fd.append('response_format', 'text');
+      if (language && language !== 'auto') fd.append('language', language);
+      const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST', headers: { Authorization: `Bearer ${openaiKey}` }, body: fd,
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e?.error?.message || `Whisper ${res.status}`); }
+      parts.push(await res.text());
+      offset += WHISPER_CHUNK_BYTES; part++;
+    }
+    return parts.join(' ');
+  } finally {
+    await unlink(audioPath).catch(() => {});
+  }
+}
 
 /** Transcribe a single ≤24 MB audio blob — plain text */
 async function transcribeChunk(blob: Blob, filename: string, openaiKey: string, language = 'auto'): Promise<string> {
@@ -56,7 +108,7 @@ async function transcribeAudio(audioFile: File, openaiKey: string, language = 'a
   return parts.join(' ');
 }
 
-export async function POST(request: NextRequest) {
+export const POST = logRoute(async function POST(request: NextRequest) {
   try {
     // Read AI settings from DB (server-side); fall back to env var
     const storedSettings = dbSettings.getAll();
@@ -85,6 +137,20 @@ export async function POST(request: NextRequest) {
       description = body.description || '';
       transcript  = body.transcript  || '';
 
+      // If caller passes a server-side video path, extract audio via ffmpeg then transcribe
+      if (!transcript && body.videoUrl && openaiKey) {
+        const videoPath = path.join(process.cwd(), 'public', body.videoUrl as string);
+        if (existsSync(videoPath)) {
+          transcript = await transcribeVideoFile(videoPath, openaiKey, whisperLang);
+          transcriptSource = 'video';
+          if (transcript && body.lectureId) {
+            lectures.update(body.lectureId as string, {
+              segments: [{ start: 0, end: 0, text: transcript }],
+            });
+          }
+        }
+      }
+
       // Resolve transcript for regeneration requests
       if (!transcript && body.lectureId) {
         const lec = lectures.getById(body.lectureId);
@@ -94,28 +160,11 @@ export async function POST(request: NextRequest) {
           transcript = lec.segments.map((s: { text: string }) => s.text).join(' ');
           transcriptSource = 'stored';
         } else if (lec?.videoUrl && openaiKey) {
-          // 2. Stream file in 24 MB chunks — never loads whole video into RAM
+          // 2. Extract audio via ffmpeg, then transcribe with Whisper
           const videoPath = path.join(process.cwd(), 'public', lec.videoUrl);
           if (existsSync(videoPath)) {
-            const { size } = statSync(videoPath);
-            const ext = path.extname(lec.videoUrl).slice(1) || 'mp4';
-            const parts: string[] = [];
-            let offset = 0, part = 0;
-            while (offset < size) {
-              const end = Math.min(offset + WHISPER_CHUNK_BYTES - 1, size - 1);
-              const stream = createReadStream(videoPath, { start: offset, end });
-              const chunks: Buffer[] = [];
-              for await (const c of Readable.from(stream)) {
-                chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
-              }
-              const blob = new Blob([Buffer.concat(chunks)], { type: `video/${ext}` });
-              const file = new File([blob], `part${part}.${ext}`, { type: `video/${ext}` });
-              parts.push(await transcribeChunk(file, `part${part}.${ext}`, openaiKey, whisperLang));
-              offset += WHISPER_CHUNK_BYTES; part++;
-            }
-            transcript = parts.join(' ');
+            transcript = await transcribeVideoFile(videoPath, openaiKey, whisperLang);
             transcriptSource = 'video';
-            // Save as a simple segment so future regenerations are instant
             if (transcript) {
               lectures.update(lec.id, {
                 segments: [{ start: 0, end: lec.duration * 60, text: transcript }],
@@ -231,3 +280,4 @@ Notes:`;
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+);

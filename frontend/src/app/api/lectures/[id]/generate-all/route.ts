@@ -16,30 +16,47 @@ import { NextRequest, NextResponse } from 'next/server';
 import { lectures, quizzes, settings as dbSettings, type Chapter } from '@/lib/db';
 import { requireAuth } from '@/lib/server-auth';
 import { createReadStream, existsSync, statSync } from 'fs';
+import { unlink } from 'fs/promises';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { tmpdir } from 'os';
 import path from 'path';
 import { Readable } from 'stream';
+import { logRoute } from '@/lib/logger';
 
 export const maxDuration = 3600;
 
+const execFileAsync = promisify(execFile);
 const WHISPER_CHUNK = 24 * 1024 * 1024;
 
-// ── Shared: transcribe a video file using streaming disk reads ───────────────
-// Never loads the full file into memory — reads 24 MB at a time using
-// fs.createReadStream byte ranges, so 16 GB files work fine.
+// ── Extract audio from any video format via ffmpeg ───────────────────────────
+// Produces a 16 kHz mono MP3 (~0.5 MB/min) that Whisper can always decode,
+// regardless of the original container (WebM, MKV, MOV, MP4, etc.).
+async function extractAudio(videoPath: string): Promise<string> {
+  const tmpAudio = path.join(tmpdir(), `gyanbrige-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`);
+  await execFileAsync('ffmpeg', [
+    '-i', videoPath,
+    '-vn',            // drop video stream
+    '-ar', '16000',   // 16 kHz — enough for speech
+    '-ac', '1',       // mono
+    '-acodec', 'libmp3lame',
+    '-q:a', '4',      // ~128 kbps
+    '-y',             // overwrite temp file if it somehow exists
+    tmpAudio,
+  ]);
+  return tmpAudio;
+}
 
-async function streamRangeToBlob(filePath: string, start: number, end: number, mimeType: string): Promise<Blob> {
+// ── Send one ≤24 MB audio range to Whisper ───────────────────────────────────
+async function transcribeChunkFromDisk(filePath: string, start: number, end: number, partNum: number, key: string, language = 'auto'): Promise<string> {
   const stream = createReadStream(filePath, { start, end });
   const chunks: Buffer[] = [];
   for await (const chunk of Readable.from(stream)) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
-  return new Blob([Buffer.concat(chunks)], { type: mimeType });
-}
-
-async function transcribeChunkFromDisk(filePath: string, start: number, end: number, ext: string, partNum: number, key: string, language = 'auto'): Promise<string> {
-  const blob = await streamRangeToBlob(filePath, start, end, `video/${ext}`);
+  const blob = new Blob([Buffer.concat(chunks)], { type: 'audio/mpeg' });
   const fd = new FormData();
-  fd.append('file', blob, `part${partNum}.${ext}`);
+  fd.append('file', blob, `part${partNum}.mp3`);
   fd.append('model', 'whisper-1');
   fd.append('response_format', 'text');
   if (language && language !== 'auto') fd.append('language', language);
@@ -50,17 +67,22 @@ async function transcribeChunkFromDisk(filePath: string, start: number, end: num
   return res.text();
 }
 
+// ── Transcribe any video file: extract audio → chunk → Whisper ───────────────
 async function transcribeVideoPath(filePath: string, key: string, language = 'auto'): Promise<string> {
-  const { size }   = statSync(filePath);
-  const ext        = path.extname(filePath).slice(1) || 'mp4';
-  const parts: string[] = [];
-  let offset = 0, part = 0;
-  while (offset < size) {
-    const end = Math.min(offset + WHISPER_CHUNK - 1, size - 1);
-    parts.push(await transcribeChunkFromDisk(filePath, offset, end, ext, part, key, language));
-    offset += WHISPER_CHUNK; part++;
+  const audioPath = await extractAudio(filePath);
+  try {
+    const { size } = statSync(audioPath);
+    const parts: string[] = [];
+    let offset = 0, part = 0;
+    while (offset < size) {
+      const end = Math.min(offset + WHISPER_CHUNK - 1, size - 1);
+      parts.push(await transcribeChunkFromDisk(audioPath, offset, end, part, key, language));
+      offset += WHISPER_CHUNK; part++;
+    }
+    return parts.join(' ');
+  } finally {
+    await unlink(audioPath).catch(() => {});
   }
-  return parts.join(' ');
 }
 
 // ── GPT call helper ──────────────────────────────────────────────────────────
@@ -188,7 +210,7 @@ Return ONLY a complete JSON array (no markdown, no truncation):
 
 // ── Route handler ────────────────────────────────────────────────────────────
 
-export async function POST(
+export const POST = logRoute(async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -206,14 +228,22 @@ export async function POST(
 
   if (!openaiKey) return NextResponse.json({ error: 'OpenAI API key not configured. Set it in Admin → AI Settings.' }, { status: 400 });
 
-  const body = await request.json();
+  let body: Record<string, unknown> = {};
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
   const {
     generateNotes:  doNotes    = true,
     detectChapters: doChapters = false,
     generateQuiz:   doQuiz     = false,
     quizTitle = `Quiz: ${lecture.title}`,
     quizCount = 5,
-  } = body;
+  } = body as {
+    generateNotes?: boolean; detectChapters?: boolean; generateQuiz?: boolean;
+    quizTitle?: string; quizCount?: number;
+  };
 
   // ── Step 1: get transcript (once, regardless of how many operations) ────────
   let transcript = '';
@@ -225,15 +255,27 @@ export async function POST(
   } else if (lecture.videoUrl) {
     const videoPath = path.join(process.cwd(), 'public', lecture.videoUrl);
     if (existsSync(videoPath)) {
-      // Stream the file in 24 MB chunks — never loads the whole thing into RAM
-      transcript       = await transcribeVideoPath(videoPath, openaiKey, whisperLang);
-      transcriptSource = 'video';
-      // Persist so future regenerations are instant
-      if (transcript) {
-        lectures.update(id, {
-          segments: [{ start: 0, end: lecture.duration * 60, text: transcript }],
-        });
+      try {
+        // Stream the file in 24 MB chunks — never loads the whole thing into RAM
+        transcript       = await transcribeVideoPath(videoPath, openaiKey, whisperLang);
+        transcriptSource = 'video';
+        // Persist so future regenerations are instant
+        if (transcript) {
+          lectures.update(id, {
+            segments: [{ start: 0, end: lecture.duration * 60, text: transcript }],
+          });
+        }
+      } catch (transcribeErr) {
+        return NextResponse.json(
+          { error: `Video transcription failed: ${(transcribeErr as Error).message}` },
+          { status: 500 }
+        );
       }
+    } else {
+      return NextResponse.json(
+        { error: 'Video file not found on server. Re-upload the lecture video.' },
+        { status: 404 }
+      );
     }
   }
 
@@ -281,3 +323,4 @@ export async function POST(
 
   return NextResponse.json({ success: true, ...result });
 }
+);
