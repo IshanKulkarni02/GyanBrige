@@ -10,8 +10,9 @@ export default function AISettingsPage() {
   const router = useRouter();
   const [user, setUser]             = useState<{ id: string; name: string; role: string } | null>(null);
   const [loading, setLoading]       = useState(true);
-  const [saving, setSaving]         = useState(false);
-  const [useLocalAI, setUseLocalAI] = useState(false);
+  const [saving, setSaving]                                   = useState(false);
+  const [useLocalAI, setUseLocalAI]                           = useState(false);
+  const [transcriptionLanguage, setTranscriptionLanguage]     = useState('auto');
   const [ollamaModel, setOllamaModel] = useState('llama3:latest');
   const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini');
   const [openaiKey, setOpenaiKey]   = useState('');
@@ -35,6 +36,7 @@ export default function AISettingsPage() {
       setOpenaiModel(data.openaiModel || 'gpt-4o-mini');
       setOpenaiKey(data.openaiKey || '');   // admin sees full key
       setHasKey(!!data.hasOpenaiKey);
+      setTranscriptionLanguage(data.transcriptionLanguage || 'auto');
     } catch {
       toast.error('Failed to load settings');
     } finally {
@@ -47,7 +49,7 @@ export default function AISettingsPage() {
     try {
       const res = await authFetch('/api/settings', {
         method: 'PUT',
-        body: JSON.stringify({ useLocalAI, ollamaModel, openaiModel, openaiKey }),
+        body: JSON.stringify({ useLocalAI, ollamaModel, openaiModel, openaiKey, transcriptionLanguage }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
       setHasKey(!!openaiKey);
@@ -99,6 +101,35 @@ export default function AISettingsPage() {
           </div>
           <p className="text-white/50 text-sm mt-3">
             Currently using: <span className={useLocalAI ? 'text-purple-400' : 'text-emerald-400'}>{useLocalAI ? 'Ollama (Local)' : 'ChatGPT (Cloud)'}</span>
+          </p>
+        </div>
+
+        {/* Transcription Language */}
+        <div className="glass rounded-2xl p-6">
+          <h2 className="text-xl font-semibold mb-1">🌐 Lecture Language</h2>
+          <p className="text-white/50 text-sm mb-4">
+            How your teachers deliver lectures — affects both transcription accuracy and how notes are written
+          </p>
+          <div className="space-y-2">
+            {[
+              { value: 'auto',    label: 'Mixed / Auto-detect',        sub: 'Hindi + English, Marathi + English, or any mix — recommended for most Indian colleges' },
+              { value: 'hi',      label: 'Primarily Hindi',            sub: 'Hinglish OK; Whisper focuses on Hindi' },
+              { value: 'mr',      label: 'Primarily Marathi',          sub: 'Marathi-English mix OK; Whisper focuses on Marathi' },
+              { value: 'en',      label: 'Primarily English',          sub: 'Standard English lectures' },
+            ].map(opt => (
+              <label key={opt.value}
+                className={`flex items-start gap-3 p-3 rounded-xl cursor-pointer transition ${transcriptionLanguage === opt.value ? 'bg-emerald-500/15 border border-emerald-500/30' : 'bg-white/5 hover:bg-white/10'}`}>
+                <input type="radio" name="lang" value={opt.value} checked={transcriptionLanguage === opt.value}
+                  onChange={() => setTranscriptionLanguage(opt.value)} className="mt-1 accent-emerald-500" />
+                <div>
+                  <p className="font-medium text-sm">{opt.label}</p>
+                  <p className="text-white/40 text-xs">{opt.sub}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+          <p className="text-white/30 text-xs mt-3">
+            Notes, quizzes, and chapter titles are generated in the same language mix as the transcript.
           </p>
         </div>
 

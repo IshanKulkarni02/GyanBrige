@@ -8,11 +8,14 @@ import { Readable } from 'stream';
 const WHISPER_CHUNK_BYTES = 24 * 1024 * 1024; // 24 MB (1 MB headroom)
 
 /** Transcribe a single ≤24 MB audio blob — plain text */
-async function transcribeChunk(blob: Blob, filename: string, openaiKey: string): Promise<string> {
+async function transcribeChunk(blob: Blob, filename: string, openaiKey: string, language = 'auto'): Promise<string> {
   const formData = new FormData();
   formData.append('file', blob, filename);
   formData.append('model', 'whisper-1');
   formData.append('response_format', 'text');
+  // Only hint the language when explicitly set — auto/mixed = no hint, lets Whisper
+  // handle code-switching between Hindi/Marathi/English naturally
+  if (language && language !== 'auto') formData.append('language', language);
 
   const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -33,20 +36,18 @@ async function transcribeChunk(blob: Blob, filename: string, openaiKey: string):
  * Files larger than 24 MB are split into binary chunks and transcribed
  * sequentially. Whisper handles mid-audio splits well for speech.
  */
-async function transcribeAudio(audioFile: File, openaiKey: string): Promise<string> {
+async function transcribeAudio(audioFile: File, openaiKey: string, language = 'auto'): Promise<string> {
   if (audioFile.size <= WHISPER_CHUNK_BYTES) {
-    return transcribeChunk(audioFile, audioFile.name || 'audio.mp4', openaiKey);
+    return transcribeChunk(audioFile, audioFile.name || 'audio.mp4', openaiKey, language);
   }
 
-  // Split into ≤24 MB chunks and transcribe each
   const ext = (audioFile.name.split('.').pop() || 'mp4').toLowerCase();
   const parts: string[] = [];
-  let offset = 0;
-  let part = 0;
+  let offset = 0, part = 0;
 
   while (offset < audioFile.size) {
     const chunk = audioFile.slice(offset, offset + WHISPER_CHUNK_BYTES);
-    const partTranscript = await transcribeChunk(chunk, `part${part}.${ext}`, openaiKey);
+    const partTranscript = await transcribeChunk(chunk, `part${part}.${ext}`, openaiKey, language);
     parts.push(partTranscript.trim());
     offset += WHISPER_CHUNK_BYTES;
     part++;
@@ -59,10 +60,11 @@ export async function POST(request: NextRequest) {
   try {
     // Read AI settings from DB (server-side); fall back to env var
     const storedSettings = dbSettings.getAll();
-    const useLocalAI  = storedSettings.useLocalAI === 'true';
-    const ollamaModel = storedSettings.ollamaModel || request.headers.get('x-ollama-model') || 'llama3:latest';
-    const openaiModel = storedSettings.openaiModel || request.headers.get('x-openai-model') || 'gpt-4o-mini';
-    const openaiKey   = storedSettings.openaiKey   || process.env.OPENAI_API_KEY;
+    const useLocalAI   = storedSettings.useLocalAI === 'true';
+    const ollamaModel  = storedSettings.ollamaModel || request.headers.get('x-ollama-model') || 'llama3:latest';
+    const openaiModel  = storedSettings.openaiModel || request.headers.get('x-openai-model') || 'gpt-4o-mini';
+    const openaiKey    = storedSettings.openaiKey   || process.env.OPENAI_API_KEY;
+    const whisperLang  = storedSettings.transcriptionLanguage || 'auto';
 
     let title = '';
     let description = '';
@@ -108,7 +110,7 @@ export async function POST(request: NextRequest) {
               }
               const blob = new Blob([Buffer.concat(chunks)], { type: `video/${ext}` });
               const file = new File([blob], `part${part}.${ext}`, { type: `video/${ext}` });
-              parts.push(await transcribeChunk(file, `part${part}.${ext}`, openaiKey));
+              parts.push(await transcribeChunk(file, `part${part}.${ext}`, openaiKey, whisperLang));
               offset += WHISPER_CHUNK_BYTES; part++;
             }
             transcript = parts.join(' ');
@@ -138,7 +140,7 @@ export async function POST(request: NextRequest) {
         );
       }
       // Large files are automatically split into 24 MB chunks
-      transcript = await transcribeAudio(audioFile, openaiKey);
+      transcript = await transcribeAudio(audioFile, openaiKey, whisperLang);
       transcriptSource = 'audio_upload';
     }
 
@@ -153,16 +155,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const prompt = `Generate comprehensive lecture notes for the following lecture:
+    const prompt = `Generate comprehensive lecture notes for the following lecture.
+
+LANGUAGE RULE: The lecture may be in English, Hindi, Marathi, or a mix of these (e.g. Hinglish, Marathi-English). Write the notes in the EXACT SAME LANGUAGE(S) as the transcript — do NOT translate. If the teacher switched between Hindi and English, write the notes the same way.
 
 Title: ${title}
 ${description ? `Description: ${description}` : ''}
-${transcript ? `Transcript:\n${transcript}` : ''}
+${transcript ? `Transcript:\n${transcript.slice(0, 12000)}` : ''}
 
-Generate well-structured notes in markdown with:
-- Main topics as headings (##)
-- Key points as bullet points
-- Important definitions highlighted in **bold**
+Structure:
+- ## Headings for main topics
+- Bullet points for key concepts
+- **Bold** for important terms/definitions
 - Summary section at the end
 
 Notes:`;

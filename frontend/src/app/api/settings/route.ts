@@ -19,10 +19,11 @@ export async function GET(request: NextRequest) {
     openaiKey:    isAdmin ? (all.openaiKey || '') : (all.openaiKey ? '••••••••' : ''),
     hasOpenaiKey: !!all.openaiKey,
     // Site
-    siteName:        all.siteName        || 'GyanBrige',
-    allowSignup:     all.allowSignup     !== 'false',
-    requireApproval: all.requireApproval === 'true',
-    maxUploadSizeGb: all.maxUploadSizeGb || '25',
+    siteName:              all.siteName              || 'GyanBrige',
+    allowSignup:           all.allowSignup           !== 'false',
+    requireApproval:       all.requireApproval       === 'true',
+    maxUploadSizeGb:       all.maxUploadSizeGb       || '25',
+    transcriptionLanguage: all.transcriptionLanguage || 'auto',
   });
 }
 
@@ -39,10 +40,11 @@ export async function PUT(request: NextRequest) {
   if ('openaiKey'   in body) settings.set('openaiKey',   String(body.openaiKey  || ''));
 
   // Site settings
-  if ('siteName'        in body) settings.set('siteName',        String(body.siteName        || 'GyanBrige'));
-  if ('allowSignup'     in body) settings.set('allowSignup',     String(!!body.allowSignup));
-  if ('requireApproval' in body) settings.set('requireApproval', String(!!body.requireApproval));
-  if ('maxUploadSizeGb' in body) settings.set('maxUploadSizeGb', String(body.maxUploadSizeGb || '25'));
+  if ('siteName'             in body) settings.set('siteName',             String(body.siteName             || 'GyanBrige'));
+  if ('allowSignup'          in body) settings.set('allowSignup',          String(!!body.allowSignup));
+  if ('requireApproval'      in body) settings.set('requireApproval',      String(!!body.requireApproval));
+  if ('maxUploadSizeGb'      in body) settings.set('maxUploadSizeGb',      String(body.maxUploadSizeGb      || '25'));
+  if ('transcriptionLanguage' in body) settings.set('transcriptionLanguage', String(body.transcriptionLanguage || 'auto'));
 
   return NextResponse.json({ success: true });
 }

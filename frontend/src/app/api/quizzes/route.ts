@@ -37,6 +37,8 @@ export async function POST(request: NextRequest) {
 
   const prompt = `Create ${questionCount} multiple-choice quiz questions based on this lecture content.
 
+LANGUAGE RULE: The lecture may be in English, Hindi, Marathi, or a mix. Write questions and options in the EXACT SAME LANGUAGE(S) as the content — do NOT translate.
+
 Lecture: ${lecture.title}
 Content: ${source.slice(0, 6000)}
 

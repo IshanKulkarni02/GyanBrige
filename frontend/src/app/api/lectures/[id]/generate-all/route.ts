@@ -36,12 +36,13 @@ async function streamRangeToBlob(filePath: string, start: number, end: number, m
   return new Blob([Buffer.concat(chunks)], { type: mimeType });
 }
 
-async function transcribeChunkFromDisk(filePath: string, start: number, end: number, ext: string, partNum: number, key: string): Promise<string> {
+async function transcribeChunkFromDisk(filePath: string, start: number, end: number, ext: string, partNum: number, key: string, language = 'auto'): Promise<string> {
   const blob = await streamRangeToBlob(filePath, start, end, `video/${ext}`);
   const fd = new FormData();
   fd.append('file', blob, `part${partNum}.${ext}`);
   fd.append('model', 'whisper-1');
   fd.append('response_format', 'text');
+  if (language && language !== 'auto') fd.append('language', language);
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: fd,
   });
@@ -49,14 +50,14 @@ async function transcribeChunkFromDisk(filePath: string, start: number, end: num
   return res.text();
 }
 
-async function transcribeVideoPath(filePath: string, key: string): Promise<string> {
+async function transcribeVideoPath(filePath: string, key: string, language = 'auto'): Promise<string> {
   const { size }   = statSync(filePath);
   const ext        = path.extname(filePath).slice(1) || 'mp4';
   const parts: string[] = [];
   let offset = 0, part = 0;
   while (offset < size) {
     const end = Math.min(offset + WHISPER_CHUNK - 1, size - 1);
-    parts.push(await transcribeChunkFromDisk(filePath, offset, end, ext, part, key));
+    parts.push(await transcribeChunkFromDisk(filePath, offset, end, ext, part, key, language));
     offset += WHISPER_CHUNK; part++;
   }
   return parts.join(' ');
@@ -103,18 +104,22 @@ function safeParseArray<T>(raw: string): T[] | null {
 
 // ── Operation: generate notes ────────────────────────────────────────────────
 
+const LANG_RULE = `LANGUAGE RULE: The lecture may be in English, Hindi, Marathi, or a mix (Hinglish, Marathi-English, etc.). Write your response in the EXACT SAME LANGUAGE(S) as the transcript — do NOT translate. Match the language mix the teacher used.`;
+
 async function generateNotes(title: string, transcript: string, key: string, model: string): Promise<string> {
   return gpt(
     `Generate comprehensive lecture notes for this lecture.
+
+${LANG_RULE}
 
 Title: ${title}
 Transcript:
 ${transcript.slice(0, 12000)}
 
-Generate well-structured markdown notes:
-- Main topics as ## headings
-- Key points as bullet points
-- Important terms in **bold**
+Structure:
+- ## Headings for main topics
+- Bullet points for key concepts
+- **Bold** for important terms
 - Summary section at the end
 
 Notes:`,
@@ -140,11 +145,14 @@ async function detectChapters(title: string, transcript: string, duration: numbe
     `Create YouTube-style chapter markers for this ${Math.round(duration / 60)}-minute lecture.
 First chapter at 00:00 titled "Introduction". 3-8 chapters, 2-5 word titles, min 90s per chapter.
 
+${LANG_RULE}
+Chapter titles should be in the same language as the lecture content.
+
 ${lines.join('\n').slice(0, 8000)}
 
 Return ONLY a complete JSON array (no markdown, no truncation):
 [{"startSec":0,"title":"Introduction"},{"startSec":120,"title":"Core Concepts"}]`,
-    key, model, 600  // raised from 300 — 8 chapters × ~15 tokens = ~120, keep headroom
+    key, model, 600
   );
   const chapters = safeParseArray<Chapter>(raw);
   if (!chapters?.length) return [{ startSec: 0, title: 'Introduction' }];
@@ -160,6 +168,9 @@ async function generateQuizQuestions(
   const raw = await gpt(
     `Create ${count} multiple-choice quiz questions based on this lecture.
 
+${LANG_RULE}
+Write questions and options in the same language as the lecture content.
+
 Title: ${title}
 Content: ${transcript.slice(0, 8000)}
 
@@ -170,7 +181,7 @@ Rules:
 
 Return ONLY a complete JSON array (no markdown, no truncation):
 [{"question":"...","options":["A","B","C","D"],"correctAnswer":0,"explanation":"..."}]`,
-    key, model, Math.min(count * 300, 3000)  // raised per-question budget: 300 tokens each
+    key, model, Math.min(count * 300, 3000)
   );
   return safeParseArray(raw) ?? [];
 }
@@ -191,6 +202,7 @@ export async function POST(
   const s = dbSettings.getAll();
   const openaiKey   = s.openaiKey   || process.env.OPENAI_API_KEY;
   const openaiModel = s.openaiModel || 'gpt-4o-mini';
+  const whisperLang = s.transcriptionLanguage || 'auto';
 
   if (!openaiKey) return NextResponse.json({ error: 'OpenAI API key not configured. Set it in Admin → AI Settings.' }, { status: 400 });
 
@@ -214,7 +226,7 @@ export async function POST(
     const videoPath = path.join(process.cwd(), 'public', lecture.videoUrl);
     if (existsSync(videoPath)) {
       // Stream the file in 24 MB chunks — never loads the whole thing into RAM
-      transcript       = await transcribeVideoPath(videoPath, openaiKey);
+      transcript       = await transcribeVideoPath(videoPath, openaiKey, whisperLang);
       transcriptSource = 'video';
       // Persist so future regenerations are instant
       if (transcript) {
