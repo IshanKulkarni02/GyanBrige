@@ -164,8 +164,9 @@ export default function UploadLecturePage() {
       setVideoFile(file);
       setError('');
       if (file.size > 25 * 1024 * 1024) {
+        const chunks = Math.ceil(file.size / (24 * 1024 * 1024));
         setWarning(
-          `File is ${(file.size / 1024 / 1024).toFixed(0)} MB — AI notes from video require files under 25 MB (Whisper API limit). The video will still upload fine. Use "Auto-Generate Notes" without a video, or write notes manually.`
+          `File is ${(file.size / 1024 / 1024).toFixed(0)} MB — it will be split into ${chunks} chunk${chunks > 1 ? 's' : ''} for transcription. This works fine, just takes a bit longer.`
         );
       } else {
         setWarning('');

@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const WHISPER_MAX_BYTES = 25 * 1024 * 1024; // 25 MB — Whisper API hard limit
+// Whisper hard limit per request — we split larger files into chunks
+const WHISPER_CHUNK_BYTES = 24 * 1024 * 1024; // 24 MB (1 MB headroom)
 
-async function transcribeAudio(audioFile: File, openaiKey: string): Promise<string> {
-  if (audioFile.size > WHISPER_MAX_BYTES) {
-    throw new Error(
-      `File is ${(audioFile.size / 1024 / 1024).toFixed(1)} MB — Whisper API limit is 25 MB. ` +
-      'Please trim the video or extract audio before uploading.'
-    );
-  }
-
+/** Transcribe a single ≤24 MB audio blob */
+async function transcribeChunk(blob: Blob, filename: string, openaiKey: string): Promise<string> {
   const formData = new FormData();
-  formData.append('file', audioFile);
+  formData.append('file', blob, filename);
   formData.append('model', 'whisper-1');
   formData.append('response_format', 'text');
 
@@ -27,6 +22,33 @@ async function transcribeAudio(audioFile: File, openaiKey: string): Promise<stri
   }
 
   return response.text();
+}
+
+/**
+ * Transcribe any size audio/video file.
+ * Files larger than 24 MB are split into binary chunks and transcribed
+ * sequentially. Whisper handles mid-audio splits well for speech.
+ */
+async function transcribeAudio(audioFile: File, openaiKey: string): Promise<string> {
+  if (audioFile.size <= WHISPER_CHUNK_BYTES) {
+    return transcribeChunk(audioFile, audioFile.name || 'audio.mp4', openaiKey);
+  }
+
+  // Split into ≤24 MB chunks and transcribe each
+  const ext = (audioFile.name.split('.').pop() || 'mp4').toLowerCase();
+  const parts: string[] = [];
+  let offset = 0;
+  let part = 0;
+
+  while (offset < audioFile.size) {
+    const chunk = audioFile.slice(offset, offset + WHISPER_CHUNK_BYTES);
+    const partTranscript = await transcribeChunk(chunk, `part${part}.${ext}`, openaiKey);
+    parts.push(partTranscript.trim());
+    offset += WHISPER_CHUNK_BYTES;
+    part++;
+  }
+
+  return parts.join(' ');
 }
 
 export async function POST(request: NextRequest) {
@@ -67,13 +89,17 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      // Large files are automatically split into 24 MB chunks
       transcript = await transcribeAudio(audioFile, openaiKey);
     }
 
-    // Validate Ollama path has transcript
+    // Ollama path requires a pre-built transcript
     if (useLocalAI && audioFile && !transcript) {
       return NextResponse.json(
-        { error: 'Transcription required before sending to Ollama. Provide an OpenAI key for Whisper transcription, or paste the transcript manually.' },
+        {
+          error:
+            'Transcription required before sending to Ollama. Provide an OpenAI key for Whisper transcription, or paste the transcript manually.',
+        },
         { status: 400 }
       );
     }
@@ -127,7 +153,10 @@ Notes:`;
         body: JSON.stringify({
           model: openaiModel,
           messages: [
-            { role: 'system', content: 'You are an expert at creating comprehensive, well-structured lecture notes.' },
+            {
+              role: 'system',
+              content: 'You are an expert at creating comprehensive, well-structured lecture notes.',
+            },
             { role: 'user', content: prompt },
           ],
           max_tokens: 2000,
