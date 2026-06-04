@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { invites } from '@/lib/db';
 import { requireAdmin } from '@/lib/server-auth';
+import { logRoute } from '@/lib/logger';
 
 // GET all invites — admin only
-export async function GET(request: NextRequest) {
+export const GET = logRoute(async function GET(request: NextRequest) {
   if (!requireAdmin(request)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -13,9 +14,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch invites' }, { status: 500 });
   }
 }
+);
 
 // POST create invite link — admin only
-export async function POST(request: NextRequest) {
+export const POST = logRoute(async function POST(request: NextRequest) {
   const admin = requireAdmin(request);
   if (!admin) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -31,3 +33,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create invite' }, { status: 500 });
   }
 }
+);

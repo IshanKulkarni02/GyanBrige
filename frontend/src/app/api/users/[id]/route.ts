@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { users } from '@/lib/db';
 import { requireAuth, requireAdmin } from '@/lib/server-auth';
+import { logRoute } from '@/lib/logger';
 
 // GET single user — requires auth
-export async function GET(
+export const GET = logRoute(async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -23,9 +24,10 @@ export async function GET(
     return NextResponse.json({ error: 'Failed to fetch user' }, { status: 500 });
   }
 }
+);
 
 // PUT update user — requires admin OR the user themselves
-export async function PUT(
+export const PUT = logRoute(async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -62,9 +64,10 @@ export async function PUT(
     return NextResponse.json({ error: 'Failed to update user' }, { status: 500 });
   }
 }
+);
 
 // DELETE user — requires admin
-export async function DELETE(
+export const DELETE = logRoute(async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -82,3 +85,4 @@ export async function DELETE(
     return NextResponse.json({ error: 'Failed to delete user' }, { status: 500 });
   }
 }
+);

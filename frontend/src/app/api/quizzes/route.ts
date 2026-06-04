@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { quizzes, lectures, settings as dbSettings } from '@/lib/db';
 import { requireAuth } from '@/lib/server-auth';
+import { logRoute } from '@/lib/logger';
 
 // GET /api/quizzes?lectureId=xxx
-export async function GET(request: NextRequest) {
+export const GET = logRoute(async function GET(request: NextRequest) {
   if (!requireAuth(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const lectureId = new URL(request.url).searchParams.get('lectureId');
   if (!lectureId) return NextResponse.json({ error: 'lectureId required' }, { status: 400 });
   const list = quizzes.getByLecture(lectureId).map(q => quizzes.getById(q.id)!);
   return NextResponse.json({ quizzes: list });
 }
+);
 
 // POST /api/quizzes  — create quiz (manual or AI-generated)
-export async function POST(request: NextRequest) {
+export const POST = logRoute(async function POST(request: NextRequest) {
   const caller = requireAuth(request);
   if (!caller || caller.role === 'student') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
@@ -99,3 +101,4 @@ Return ONLY valid JSON array, no markdown:
     return NextResponse.json({ quiz, aiError: err instanceof Error ? err.message : 'AI generation failed' });
   }
 }
+);

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { spawnSync } from 'child_process';
 import { users } from '@/lib/db';
 import { lookupVendor } from '@/lib/oui';
+import { logRoute } from '@/lib/logger';
 
 export interface ScannedDevice {
   mac: string;
@@ -81,7 +82,7 @@ function populateArpCache(): void {
   } catch { /* non-fatal */ }
 }
 
-export async function GET() {
+export const GET = logRoute(async function GET() {
   try {
     populateArpCache();
 
@@ -144,3 +145,4 @@ export async function GET() {
     );
   }
 }
+);

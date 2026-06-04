@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { courses, lectures, enrollments, users } from '@/lib/db';
+import { logRoute } from '@/lib/logger';
 
 // GET single course with lectures
-export async function GET(
+export const GET = logRoute(async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -40,9 +41,10 @@ export async function GET(
     return NextResponse.json({ error: 'Failed to fetch course' }, { status: 500 });
   }
 }
+);
 
 // PUT update course
-export async function PUT(
+export const PUT = logRoute(async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -60,9 +62,10 @@ export async function PUT(
     return NextResponse.json({ error: 'Failed to update course' }, { status: 500 });
   }
 }
+);
 
 // DELETE course
-export async function DELETE(
+export const DELETE = logRoute(async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -79,3 +82,4 @@ export async function DELETE(
     return NextResponse.json({ error: 'Failed to delete course' }, { status: 500 });
   }
 }
+);

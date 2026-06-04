@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { settings } from '@/lib/db';
 import { requireAdmin, requireAuth } from '@/lib/server-auth';
+import { logRoute } from '@/lib/logger';
 
 // GET /api/settings — any authenticated user (key is redacted)
-export async function GET(request: NextRequest) {
+export const GET = logRoute(async function GET(request: NextRequest) {
   if (!requireAuth(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const all = settings.getAll();
@@ -26,9 +27,10 @@ export async function GET(request: NextRequest) {
     transcriptionLanguage: all.transcriptionLanguage || 'auto',
   });
 }
+);
 
 // PUT /api/settings — admin only
-export async function PUT(request: NextRequest) {
+export const PUT = logRoute(async function PUT(request: NextRequest) {
   if (!requireAdmin(request)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await request.json();
@@ -48,3 +50,4 @@ export async function PUT(request: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
+);

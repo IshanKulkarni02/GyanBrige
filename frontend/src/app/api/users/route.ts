@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { users } from '@/lib/db';
 import { requireAuth, requireAdmin } from '@/lib/server-auth';
+import { logRoute } from '@/lib/logger';
 
 // GET all users — requires any authenticated user
-export async function GET(request: NextRequest) {
+export const GET = logRoute(async function GET(request: NextRequest) {
   if (!requireAuth(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -21,9 +22,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 });
   }
 }
+);
 
 // POST create user — requires admin
-export async function POST(request: NextRequest) {
+export const POST = logRoute(async function POST(request: NextRequest) {
   if (!requireAdmin(request)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -47,3 +49,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create user' }, { status: 500 });
   }
 }
+);

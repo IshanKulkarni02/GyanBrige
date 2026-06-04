@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { enrollments } from '@/lib/db';
+import { logRoute } from '@/lib/logger';
 
 // POST mark lecture as complete
-export async function POST(request: NextRequest) {
+export const POST = logRoute(async function POST(request: NextRequest) {
   try {
     const { userId, courseId, lectureId } = await request.json();
 
@@ -27,3 +28,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to update progress' }, { status: 500 });
   }
 }
+);

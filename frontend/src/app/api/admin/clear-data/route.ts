@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/server-auth';
 import Database from 'better-sqlite3';
 import path from 'path';
+import { logRoute } from '@/lib/logger';
 
-export async function DELETE(request: NextRequest) {
+export const DELETE = logRoute(async function DELETE(request: NextRequest) {
   if (!requireAdmin(request)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const db = new Database(path.join(process.cwd(), 'data', 'gyanbrige.db'));
@@ -23,3 +24,4 @@ export async function DELETE(request: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
+);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logRoute } from '@/lib/logger';
 
-export async function POST(request: NextRequest) {
+export const POST = logRoute(async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -55,3 +56,4 @@ export async function POST(request: NextRequest) {
     }, { status: 200 });
   }
 }
+);

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { lectures, courses } from '@/lib/db';
+import { logRoute } from '@/lib/logger';
 
 // GET all lectures or by course
-export async function GET(request: NextRequest) {
+export const GET = logRoute(async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const courseId = searchParams.get('courseId');
@@ -18,9 +19,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch lectures' }, { status: 500 });
   }
 }
+);
 
 // POST create new lecture
-export async function POST(request: NextRequest) {
+export const POST = logRoute(async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { title, description, courseId, duration, notes, videoUrl } = body;
@@ -63,3 +65,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create lecture' }, { status: 500 });
   }
 }
+);

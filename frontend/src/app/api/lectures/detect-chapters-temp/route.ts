@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { settings as dbSettings } from '@/lib/db';
 import { requireAuth } from '@/lib/server-auth';
+import { logRoute } from '@/lib/logger';
 
 export const maxDuration = 3600;
 
@@ -42,7 +43,7 @@ async function transcribeFile(file: File, openaiKey: string) {
   return all;
 }
 
-export async function POST(request: NextRequest) {
+export const POST = logRoute(async function POST(request: NextRequest) {
   if (!requireAuth(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const s = dbSettings.getAll();
@@ -115,3 +116,4 @@ Return ONLY JSON: [{"startSec":0,"title":"Introduction"},...]`;
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Chapter detection failed' }, { status: 500 });
   }
 }
+);

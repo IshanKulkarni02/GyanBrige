@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { courses, lectures, enrollments, users } from '@/lib/db';
+import { logRoute } from '@/lib/logger';
 
 // GET all courses or courses for a specific teacher
-export async function GET(request: NextRequest) {
+export const GET = logRoute(async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const teacherId = searchParams.get('teacherId');
@@ -30,9 +31,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch courses' }, { status: 500 });
   }
 }
+);
 
 // POST create new course
-export async function POST(request: NextRequest) {
+export const POST = logRoute(async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { name, description, icon, color, teacherId } = body;
@@ -57,3 +59,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create course' }, { status: 500 });
   }
 }
+);

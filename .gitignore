@@ -41,3 +41,6 @@ next-env.d.ts
 .turbo/
 .cache/
 .parcel-cache/
+
+# Runtime logs
+frontend/logs/

@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mkdir, writeFile, readFile, unlink, stat, readdir } from 'fs/promises';
 import { createWriteStream } from 'fs';
 import path from 'path';
+import { logRoute } from '@/lib/logger';
 
 export const maxDuration = 3600;
 
 const UPLOADS_DIR = path.join(process.cwd(), 'public', 'uploads');
 const TEMP_DIR    = path.join(process.cwd(), 'tmp', 'uploads');
 
-export async function POST(request: NextRequest) {
+export const POST = logRoute(async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
 
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
   }
 }
+);
 
 /**
  * Parallel-safe chunked upload handler.

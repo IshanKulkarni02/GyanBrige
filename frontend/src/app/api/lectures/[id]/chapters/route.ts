@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { lectures, settings as dbSettings, type Segment, type Chapter } from '@/lib/db';
 import { requireAuth } from '@/lib/server-auth';
+import { logRoute } from '@/lib/logger';
 
 export const maxDuration = 3600;
 
@@ -145,7 +146,7 @@ Return ONLY a valid JSON array — no markdown, no explanation:
 
 // ── Route handler ─────────────────────────────────────────────────────────────
 
-export async function POST(
+export const POST = logRoute(async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -197,3 +198,4 @@ export async function POST(
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Chapter detection failed' }, { status: 500 });
   }
 }
+);

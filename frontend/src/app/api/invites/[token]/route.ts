@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { invites } from '@/lib/db';
+import { logRoute } from '@/lib/logger';
 
 // GET validate token (used by signup page)
-export async function GET(
+export const GET = logRoute(async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
@@ -17,9 +18,10 @@ export async function GET(
     return NextResponse.json({ error: 'Failed to validate invite' }, { status: 500 });
   }
 }
+);
 
 // DELETE revoke invite
-export async function DELETE(
+export const DELETE = logRoute(async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
@@ -34,3 +36,4 @@ export async function DELETE(
     return NextResponse.json({ error: 'Failed to revoke invite' }, { status: 500 });
   }
 }
+);

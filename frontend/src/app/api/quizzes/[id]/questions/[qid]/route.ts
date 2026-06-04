@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { quizzes } from '@/lib/db';
 import { requireAuth } from '@/lib/server-auth';
+import { logRoute } from '@/lib/logger';
 
-export async function DELETE(
+export const DELETE = logRoute(async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; qid: string }> }
 ) {
@@ -12,3 +13,4 @@ export async function DELETE(
   quizzes.deleteQuestion(qid);
   return NextResponse.json({ success: true });
 }
+);

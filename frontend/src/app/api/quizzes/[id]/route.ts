@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { quizzes } from '@/lib/db';
 import { requireAuth } from '@/lib/server-auth';
+import { logRoute } from '@/lib/logger';
 
 // GET /api/quizzes/[id]
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const GET = logRoute(async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!requireAuth(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const quiz = quizzes.getById(id);
   if (!quiz) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({ quiz });
 }
+);
 
 // POST /api/quizzes/[id]/questions — add a question
-export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const POST = logRoute(async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const caller = requireAuth(request);
   if (!caller || caller.role === 'student') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { id } = await params;
@@ -22,12 +24,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const q = quizzes.addQuestion(id, { question, options, correctAnswer: correctAnswer ?? 0, explanation: explanation ?? '', order: order ?? 1 });
   return NextResponse.json({ question: q });
 }
+);
 
 // DELETE /api/quizzes/[id]
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = logRoute(async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const caller = requireAuth(request);
   if (!caller || caller.role === 'student') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { id } = await params;
   quizzes.delete(id);
   return NextResponse.json({ success: true });
 }
+);

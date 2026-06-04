@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { enrollments, courses, lectures, users } from '@/lib/db';
 import { requireAuth } from '@/lib/server-auth';
+import { logRoute } from '@/lib/logger';
 
 // GET enrollments for a user
-export async function GET(request: NextRequest) {
+export const GET = logRoute(async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
@@ -52,9 +53,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch enrollments' }, { status: 500 });
   }
 }
+);
 
 // POST enroll in a course
-export async function POST(request: NextRequest) {
+export const POST = logRoute(async function POST(request: NextRequest) {
   try {
     const { userId, courseId } = await request.json();
 
@@ -71,9 +73,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to enroll' }, { status: 500 });
   }
 }
+);
 
 // DELETE unenroll from a course
-export async function DELETE(request: NextRequest) {
+export const DELETE = logRoute(async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
@@ -92,3 +95,4 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to unenroll' }, { status: 500 });
   }
 }
+);
