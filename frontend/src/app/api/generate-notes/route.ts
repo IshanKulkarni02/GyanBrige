@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { settings as dbSettings, lectures } from '@/lib/db';
-import { readFileSync, existsSync } from 'fs';
+import { createReadStream, existsSync, statSync } from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
 
 // Whisper hard limit per request — we split larger files into chunks
 const WHISPER_CHUNK_BYTES = 24 * 1024 * 1024; // 24 MB (1 MB headroom)
@@ -91,13 +92,26 @@ export async function POST(request: NextRequest) {
           transcript = lec.segments.map((s: { text: string }) => s.text).join(' ');
           transcriptSource = 'stored';
         } else if (lec?.videoUrl && openaiKey) {
-          // 2. No stored segments but lecture has a video — transcribe it server-side
+          // 2. Stream file in 24 MB chunks — never loads whole video into RAM
           const videoPath = path.join(process.cwd(), 'public', lec.videoUrl);
           if (existsSync(videoPath)) {
-            const ext  = path.extname(lec.videoUrl).slice(1) || 'mp4';
-            const buf  = readFileSync(videoPath);
-            const file = new File([buf], `lecture.${ext}`, { type: `video/${ext}` });
-            transcript = await transcribeAudio(file, openaiKey);
+            const { size } = statSync(videoPath);
+            const ext = path.extname(lec.videoUrl).slice(1) || 'mp4';
+            const parts: string[] = [];
+            let offset = 0, part = 0;
+            while (offset < size) {
+              const end = Math.min(offset + WHISPER_CHUNK_BYTES - 1, size - 1);
+              const stream = createReadStream(videoPath, { start: offset, end });
+              const chunks: Buffer[] = [];
+              for await (const c of Readable.from(stream)) {
+                chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+              }
+              const blob = new Blob([Buffer.concat(chunks)], { type: `video/${ext}` });
+              const file = new File([blob], `part${part}.${ext}`, { type: `video/${ext}` });
+              parts.push(await transcribeChunk(file, `part${part}.${ext}`, openaiKey));
+              offset += WHISPER_CHUNK_BYTES; part++;
+            }
+            transcript = parts.join(' ');
             transcriptSource = 'video';
             // Save as a simple segment so future regenerations are instant
             if (transcript) {

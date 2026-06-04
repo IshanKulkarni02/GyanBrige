@@ -15,18 +15,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { lectures, quizzes, settings as dbSettings, type Chapter } from '@/lib/db';
 import { requireAuth } from '@/lib/server-auth';
-import { readFileSync, existsSync } from 'fs';
+import { createReadStream, existsSync, statSync } from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
 
 export const maxDuration = 3600;
 
 const WHISPER_CHUNK = 24 * 1024 * 1024;
 
-// ── Shared: transcribe any size file ────────────────────────────────────────
+// ── Shared: transcribe a video file using streaming disk reads ───────────────
+// Never loads the full file into memory — reads 24 MB at a time using
+// fs.createReadStream byte ranges, so 16 GB files work fine.
 
-async function transcribeChunkText(blob: Blob, filename: string, key: string): Promise<string> {
+async function streamRangeToBlob(filePath: string, start: number, end: number, mimeType: string): Promise<Blob> {
+  const stream = createReadStream(filePath, { start, end });
+  const chunks: Buffer[] = [];
+  for await (const chunk of Readable.from(stream)) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return new Blob([Buffer.concat(chunks)], { type: mimeType });
+}
+
+async function transcribeChunkFromDisk(filePath: string, start: number, end: number, ext: string, partNum: number, key: string): Promise<string> {
+  const blob = await streamRangeToBlob(filePath, start, end, `video/${ext}`);
   const fd = new FormData();
-  fd.append('file', blob, filename);
+  fd.append('file', blob, `part${partNum}.${ext}`);
   fd.append('model', 'whisper-1');
   fd.append('response_format', 'text');
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -36,13 +49,14 @@ async function transcribeChunkText(blob: Blob, filename: string, key: string): P
   return res.text();
 }
 
-async function transcribeFile(file: File, key: string): Promise<string> {
-  if (file.size <= WHISPER_CHUNK) return transcribeChunkText(file, file.name, key);
-  const ext = file.name.split('.').pop() ?? 'mp4';
+async function transcribeVideoPath(filePath: string, key: string): Promise<string> {
+  const { size }   = statSync(filePath);
+  const ext        = path.extname(filePath).slice(1) || 'mp4';
   const parts: string[] = [];
   let offset = 0, part = 0;
-  while (offset < file.size) {
-    parts.push(await transcribeChunkText(file.slice(offset, offset + WHISPER_CHUNK), `p${part}.${ext}`, key));
+  while (offset < size) {
+    const end = Math.min(offset + WHISPER_CHUNK - 1, size - 1);
+    parts.push(await transcribeChunkFromDisk(filePath, offset, end, ext, part, key));
     offset += WHISPER_CHUNK; part++;
   }
   return parts.join(' ');
@@ -199,12 +213,10 @@ export async function POST(
   } else if (lecture.videoUrl) {
     const videoPath = path.join(process.cwd(), 'public', lecture.videoUrl);
     if (existsSync(videoPath)) {
-      const ext  = path.extname(lecture.videoUrl).slice(1) || 'mp4';
-      const buf  = readFileSync(videoPath);
-      const file = new File([buf], `lecture.${ext}`, { type: `video/${ext}` });
-      transcript  = await transcribeFile(file, openaiKey);
+      // Stream the file in 24 MB chunks — never loads the whole thing into RAM
+      transcript       = await transcribeVideoPath(videoPath, openaiKey);
       transcriptSource = 'video';
-      // Save for future — avoids re-transcribing
+      // Persist so future regenerations are instant
       if (transcript) {
         lectures.update(id, {
           segments: [{ start: 0, end: lecture.duration * 60, text: transcript }],
