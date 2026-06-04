@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { settings as dbSettings } from '@/lib/db';
+import { settings as dbSettings, lectures } from '@/lib/db';
 
 // Whisper hard limit per request — we split larger files into chunks
 const WHISPER_CHUNK_BYTES = 24 * 1024 * 1024; // 24 MB (1 MB headroom)
@@ -75,9 +75,18 @@ export async function POST(request: NextRequest) {
       audioFile = formData.get('audio') as File | null;
     } else {
       const body = await request.json();
-      title = body.title || '';
+      title       = body.title       || '';
       description = body.description || '';
-      transcript = body.transcript || '';
+      transcript  = body.transcript  || '';
+
+      // If a lectureId is provided, pull the stored transcript segments from DB
+      // so regeneration uses the real content, not a hallucination from the title
+      if (!transcript && body.lectureId) {
+        const lec = lectures.getById(body.lectureId);
+        if (lec?.segments?.length) {
+          transcript = lec.segments.map((s: { text: string }) => s.text).join(' ');
+        }
+      }
     }
 
     if (!title) {
@@ -174,7 +183,7 @@ Notes:`;
       if (!notes) throw new Error('OpenAI returned an empty response.');
     }
 
-    return NextResponse.json({ success: true, notes });
+    return NextResponse.json({ success: true, notes, transcriptUsed: !!transcript });
   } catch (error) {
     console.error('Note generation error:', error);
     const message = error instanceof Error ? error.message : 'Failed to generate notes';

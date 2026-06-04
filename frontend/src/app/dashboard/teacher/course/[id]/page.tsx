@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { authFetch } from '@/lib/api';
 import { toast } from 'sonner';
 
-interface Lecture  { id: string; title: string; description: string; duration: number; order: number; videoUrl?: string; notes: string; chapters?: {startSec:number;title:string}[]; }
+interface Lecture  { id: string; title: string; description: string; duration: number; order: number; videoUrl?: string; notes: string; chapters?: {startSec:number;title:string}[]; segments?: {start:number;end:number;text:string}[]; }
 interface Student  { id: string; name: string; email: string; progress: number; completedLectures: string[]; }
 interface Course   { id: string; name: string; description: string; icon: string; color: string; }
 interface UserData { id: string; name: string; role: string; }
@@ -120,18 +120,23 @@ export default function TeacherCoursePage() {
     if (!editingLecture) return;
     setRegenNotes(true);
     try {
-      // Server reads the API key and model from the settings DB — no headers needed
       const res = await authFetch('/api/generate-notes', {
         method: 'POST',
+        // Pass lectureId so the server can use the stored transcript if available
         body: JSON.stringify({
-          title: editingLecture.title,
+          lectureId:   editingLecture.id,
+          title:       editingLecture.title,
           description: editingLecture.description,
         }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error);
       setEditedNotes(data.notes);
-      toast.success('Notes regenerated — review and save');
+      if (data.transcriptUsed) {
+        toast.success('Notes regenerated from lecture transcript — review and save');
+      } else {
+        toast.warning('No transcript stored — notes generated from title only. For accurate notes, use "Detect Chapters" with the video file which also saves the transcript.');
+      }
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Regeneration failed'); }
     finally { setRegenNotes(false); }
   };
@@ -313,12 +318,16 @@ export default function TeacherCoursePage() {
               <button onClick={() => setEditingLecture(null)} className="text-white/40 hover:text-white text-xl">✕</button>
             </div>
 
-            <div className="flex gap-2 mb-3 shrink-0">
+            <div className="flex items-center gap-2 mb-3 shrink-0 flex-wrap">
               <button onClick={regenerateNotes} disabled={regenNotes}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 disabled:opacity-50 transition text-sm">
                 {regenNotes ? <><span className="animate-spin">⚙️</span> Regenerating…</> : '🤖 Regenerate AI Notes'}
               </button>
-              <span className="text-white/30 text-xs self-center">from title &amp; description</span>
+              {editingLecture.segments?.length ? (
+                <span className="text-emerald-400 text-xs">✓ transcript stored — will use real lecture content</span>
+              ) : (
+                <span className="text-amber-400 text-xs">⚠️ no transcript — will generate from title only (may be inaccurate). Use "Detect Chapters" with the video file to store the real transcript first.</span>
+              )}
             </div>
 
             <textarea
