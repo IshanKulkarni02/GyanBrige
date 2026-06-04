@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Transcribe audio using OpenAI Whisper
+const WHISPER_MAX_BYTES = 25 * 1024 * 1024; // 25 MB — Whisper API hard limit
+
 async function transcribeAudio(audioFile: File, openaiKey: string): Promise<string> {
+  if (audioFile.size > WHISPER_MAX_BYTES) {
+    throw new Error(
+      `File is ${(audioFile.size / 1024 / 1024).toFixed(1)} MB — Whisper API limit is 25 MB. ` +
+      'Please trim the video or extract audio before uploading.'
+    );
+  }
+
   const formData = new FormData();
   formData.append('file', audioFile);
   formData.append('model', 'whisper-1');
@@ -9,44 +17,38 @@ async function transcribeAudio(audioFile: File, openaiKey: string): Promise<stri
 
   const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${openaiKey}`,
-    },
+    headers: { Authorization: `Bearer ${openaiKey}` },
     body: formData,
   });
 
   if (!response.ok) {
-    throw new Error('Transcription failed');
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Whisper API error ${response.status}`);
   }
 
-  return await response.text();
+  return response.text();
 }
 
-// Generate notes using AI
 export async function POST(request: NextRequest) {
   try {
-    // Get AI settings from request headers (passed from client localStorage)
     const useLocalAI = request.headers.get('x-use-local-ai') === 'true';
     const ollamaModel = request.headers.get('x-ollama-model') || 'llama3:latest';
     const openaiModel = request.headers.get('x-openai-model') || 'gpt-4o-mini';
     const openaiKey = request.headers.get('x-openai-key') || process.env.OPENAI_API_KEY;
-    
+
     let title = '';
     let description = '';
     let transcript = '';
     let audioFile: File | null = null;
-    
-    // Check if request is FormData (audio file) or JSON
+
     const contentType = request.headers.get('content-type') || '';
-    
+
     if (contentType.includes('multipart/form-data')) {
-      // FormData with audio file (for ChatGPT)
       const formData = await request.formData();
-      title = formData.get('title') as string || '';
-      description = formData.get('description') as string || '';
+      title = (formData.get('title') as string) || '';
+      description = (formData.get('description') as string) || '';
       audioFile = formData.get('audio') as File | null;
     } else {
-      // JSON with transcript (for Ollama)
       const body = await request.json();
       title = body.title || '';
       description = body.description || '';
@@ -56,122 +58,94 @@ export async function POST(request: NextRequest) {
     if (!title) {
       return NextResponse.json({ error: 'Title is required' }, { status: 400 });
     }
-    
-    // If using OpenAI with audio, transcribe first
-    if (!useLocalAI && audioFile && openaiKey) {
-      try {
-        transcript = await transcribeAudio(audioFile, openaiKey);
-      } catch (err) {
-        console.error('Transcription error:', err);
+
+    // Transcribe audio if provided and using OpenAI
+    if (!useLocalAI && audioFile) {
+      if (!openaiKey) {
+        return NextResponse.json(
+          { error: 'OpenAI API key not configured. Set it in Admin → AI Settings.' },
+          { status: 400 }
+        );
       }
+      transcript = await transcribeAudio(audioFile, openaiKey);
+    }
+
+    // Validate Ollama path has transcript
+    if (useLocalAI && audioFile && !transcript) {
+      return NextResponse.json(
+        { error: 'Transcription required before sending to Ollama. Provide an OpenAI key for Whisper transcription, or paste the transcript manually.' },
+        { status: 400 }
+      );
     }
 
     const prompt = `Generate comprehensive lecture notes for the following lecture:
 
 Title: ${title}
 ${description ? `Description: ${description}` : ''}
-${transcript ? `Transcript: ${transcript}` : ''}
+${transcript ? `Transcript:\n${transcript}` : ''}
 
-Please generate well-structured notes in markdown format with:
-- Main topics as headings
+Generate well-structured notes in markdown with:
+- Main topics as headings (##)
 - Key points as bullet points
-- Important definitions highlighted
-- Summary at the end
+- Important definitions highlighted in **bold**
+- Summary section at the end
 
 Notes:`;
 
     let notes = '';
 
     if (useLocalAI) {
-      // Use Ollama (local)
-      try {
-        const response = await fetch('http://localhost:11434/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: ollamaModel,
-            prompt: prompt,
-            stream: false,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          notes = data.response || generateFallbackNotes(title, description);
-        } else {
-          notes = generateFallbackNotes(title, description);
-        }
-      } catch {
-        // Ollama not available, use fallback
-        notes = generateFallbackNotes(title, description);
+      const response = await fetch('http://localhost:11434/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: ollamaModel, prompt, stream: false }),
+      });
+      if (!response.ok) {
+        const status = response.status;
+        throw new Error(
+          status === 404
+            ? `Ollama model "${ollamaModel}" not found. Run: ollama pull ${ollamaModel}`
+            : `Ollama error ${status}. Make sure Ollama is running on port 11434.`
+        );
       }
-    } else if (openaiKey) {
-      // Use OpenAI
-      try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openaiKey}`,
-          },
-          body: JSON.stringify({
-            model: openaiModel,
-            messages: [
-              { role: 'system', content: 'You are a helpful assistant that creates comprehensive lecture notes.' },
-              { role: 'user', content: prompt },
-            ],
-            max_tokens: 2000,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          notes = data.choices?.[0]?.message?.content || generateFallbackNotes(title, description);
-        } else {
-          notes = generateFallbackNotes(title, description);
-        }
-      } catch {
-        notes = generateFallbackNotes(title, description);
-      }
+      const data = await response.json();
+      notes = data.response || '';
+      if (!notes) throw new Error('Ollama returned an empty response.');
     } else {
-      // No AI configured, use fallback
-      notes = generateFallbackNotes(title, description);
+      if (!openaiKey) {
+        return NextResponse.json(
+          { error: 'OpenAI API key not configured. Set it in Admin → AI Settings.' },
+          { status: 400 }
+        );
+      }
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${openaiKey}`,
+        },
+        body: JSON.stringify({
+          model: openaiModel,
+          messages: [
+            { role: 'system', content: 'You are an expert at creating comprehensive, well-structured lecture notes.' },
+            { role: 'user', content: prompt },
+          ],
+          max_tokens: 2000,
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `OpenAI API error ${response.status}`);
+      }
+      const data = await response.json();
+      notes = data.choices?.[0]?.message?.content || '';
+      if (!notes) throw new Error('OpenAI returned an empty response.');
     }
 
     return NextResponse.json({ success: true, notes });
   } catch (error) {
     console.error('Note generation error:', error);
-    return NextResponse.json({ error: 'Failed to generate notes' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to generate notes';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-}
-
-function generateFallbackNotes(title: string, description?: string): string {
-  return `# ${title}
-
-## Overview
-${description || 'This lecture covers important concepts and topics.'}
-
-## Key Points
-- Main concept 1
-- Main concept 2
-- Main concept 3
-
-## Topics Covered
-### Topic 1
-- Important detail
-- Key takeaway
-
-### Topic 2
-- Important detail
-- Key takeaway
-
-## Summary
-This lecture provided an introduction to ${title.toLowerCase()}. Review the key points above and practice applying these concepts.
-
-## Additional Notes
-- Add your own notes here
-- Review related materials
-
----
-*Notes auto-generated by GyanBrige AI*`;
 }

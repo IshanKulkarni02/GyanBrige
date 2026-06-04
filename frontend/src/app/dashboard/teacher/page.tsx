@@ -4,22 +4,15 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-const classes = [
-  { id: '1', name: 'Class 10-A', subject: 'Mathematics', students: 32, lastLecture: 'Today' },
-  { id: '2', name: 'Class 10-B', subject: 'Mathematics', students: 28, lastLecture: 'Yesterday' },
-  { id: '3', name: 'Class 11-A', subject: 'Physics', students: 35, lastLecture: '2 days ago' },
-];
-
-const recentUploads = [
-  { id: '1', title: 'Calculus - Integration', status: 'processed', views: 45 },
-  { id: '2', title: 'Trigonometry Basics', status: 'processing', views: 0 },
-  { id: '3', title: 'Algebra Review', status: 'processed', views: 128 },
-];
+interface CourseItem { id: string; name: string; description: string; icon: string; color: string; lectureCount: number; }
 
 export default function TeacherDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<{ name: string; role: string } | null>(null);
+  const [user, setUser] = useState<{ id: string; name: string; role: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [myCourses, setMyCourses] = useState<CourseItem[]>([]);
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [totalLectures, setTotalLectures] = useState(0);
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -29,12 +22,37 @@ export default function TeacherDashboard() {
         router.push('/login');
       } else {
         setUser(parsed);
-        setLoading(false);
+        loadData(parsed);
       }
     } else {
       router.push('/login');
     }
   }, [router]);
+
+  const loadData = async (me: { id: string; role: string }) => {
+    try {
+      const [coursesRes, enrollmentsRes] = await Promise.all([
+        fetch(`/api/courses?teacherId=${me.id}`, { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
+        fetch('/api/enrollments', { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
+      ]);
+      const { courses } = await coursesRes.json();
+      const enrollData = await enrollmentsRes.json().catch(() => ({ enrollments: [] }));
+      const courseList: CourseItem[] = courses ?? [];
+      setMyCourses(courseList);
+      setTotalLectures(courseList.reduce((s, c) => s + (c.lectureCount ?? 0), 0));
+      const courseIds = new Set(courseList.map(c => c.id));
+      const studentSet = new Set(
+        (enrollData.enrollments ?? [])
+          .filter((e: { courseId: string }) => courseIds.has(e.courseId))
+          .map((e: { userId: string }) => e.userId)
+      );
+      setTotalStudents(studentSet.size);
+    } catch (e) {
+      console.error('Failed to load teacher data', e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -67,8 +85,6 @@ export default function TeacherDashboard() {
             { icon: '📤', label: 'Upload Lecture', href: '/dashboard/teacher/upload' },
             { icon: '📋', label: 'Attendance', href: '/dashboard/teacher/attendance' },
             { icon: '🎙️', label: 'Record', href: '/dashboard/teacher/record' },
-            { icon: '📊', label: 'Analytics', href: '#' },
-            { icon: '⚙️', label: 'Settings', href: '#' },
           ].map((item) => (
             <Link
               key={item.label}
@@ -112,12 +128,11 @@ export default function TeacherDashboard() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           {[
-            { label: 'Total Students', value: '95', icon: '🎓', color: 'from-emerald-500 to-teal-500' },
-            { label: 'Lectures Uploaded', value: '24', icon: '📤', color: 'from-purple-500 to-indigo-500' },
-            { label: 'Total Views', value: '1.2K', icon: '👁️', color: 'from-amber-500 to-orange-500' },
-            { label: 'Avg Attendance', value: '87%', icon: '📋', color: 'from-blue-500 to-cyan-500' },
+            { label: 'Total Students', value: String(totalStudents), icon: '🎓', color: 'from-emerald-500 to-teal-500' },
+            { label: 'My Courses', value: String(myCourses.length), icon: '🏫', color: 'from-purple-500 to-indigo-500' },
+            { label: 'Total Lectures', value: String(totalLectures), icon: '📤', color: 'from-amber-500 to-orange-500' },
           ].map((stat, i) => (
             <div key={i} className="glass rounded-xl p-6">
               <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${stat.color} flex items-center justify-center mb-4`}>
@@ -154,61 +169,34 @@ export default function TeacherDashboard() {
           </Link>
         </div>
 
-        {/* Classes & Uploads */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* My Classes */}
-          <div>
-            <h2 className="text-xl font-semibold mb-4">My Classes</h2>
+        {/* My Courses */}
+        <div>
+          <h2 className="text-xl font-semibold mb-4">My Courses</h2>
+          {myCourses.length === 0 ? (
+            <div className="glass rounded-xl p-8 text-center text-white/50">
+              No courses yet. Ask an admin to assign you to a course.
+            </div>
+          ) : (
             <div className="glass rounded-xl overflow-hidden">
-              {classes.map((cls, i) => (
+              {myCourses.map((course, i) => (
                 <div
-                  key={cls.id}
-                  className={`flex items-center gap-4 p-4 hover:bg-white/5 transition cursor-pointer ${
-                    i !== classes.length - 1 ? 'border-b border-white/10' : ''
+                  key={course.id}
+                  className={`flex items-center gap-4 p-4 hover:bg-white/5 transition ${
+                    i !== myCourses.length - 1 ? 'border-b border-white/10' : ''
                   }`}
                 >
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-                    <span className="text-emerald-400">🏫</span>
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${course.color} flex items-center justify-center`}>
+                    <span>{course.icon}</span>
                   </div>
                   <div className="flex-1">
-                    <h4 className="font-medium">{cls.name}</h4>
-                    <p className="text-white/50 text-sm">{cls.subject} • {cls.students} students</p>
+                    <h4 className="font-medium">{course.name}</h4>
+                    <p className="text-white/50 text-sm">{course.description}</p>
                   </div>
-                  <span className="text-white/40 text-sm">{cls.lastLecture}</span>
+                  <span className="text-white/40 text-sm">{course.lectureCount} lectures</span>
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* Recent Uploads */}
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Recent Uploads</h2>
-            <div className="glass rounded-xl overflow-hidden">
-              {recentUploads.map((upload, i) => (
-                <div
-                  key={upload.id}
-                  className={`flex items-center gap-4 p-4 ${
-                    i !== recentUploads.length - 1 ? 'border-b border-white/10' : ''
-                  }`}
-                >
-                  <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center">
-                    <span className="text-purple-400">🎬</span>
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="font-medium">{upload.title}</h4>
-                    <p className="text-white/50 text-sm">{upload.views} views</p>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-xs ${
-                    upload.status === 'processed' 
-                      ? 'bg-emerald-500/20 text-emerald-400' 
-                      : 'bg-amber-500/20 text-amber-400'
-                  }`}>
-                    {upload.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
       </main>
     </div>

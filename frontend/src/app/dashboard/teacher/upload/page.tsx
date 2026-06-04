@@ -64,119 +64,84 @@ export default function UploadLecturePage() {
     }
   };
 
-  const generateNotes = async () => {
-    if (!title) {
-      setError('Please enter a title first');
-      return;
+  const callGenerateNotes = async (): Promise<string> => {
+    const aiSettings = localStorage.getItem('aiSettings');
+    const settings = aiSettings ? JSON.parse(aiSettings) : {};
+    const useLocalAI = settings.useLocalAI || false;
+
+    let res: Response;
+
+    if (videoFile && !useLocalAI) {
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('description', description);
+      formData.append('audio', videoFile);
+      res = await fetch('/api/generate-notes', {
+        method: 'POST',
+        headers: {
+          'x-use-local-ai': 'false',
+          'x-openai-model': settings.openaiModel || 'gpt-4o-mini',
+          'x-openai-key': settings.openaiKey || '',
+        },
+        body: formData,
+      });
+    } else if (videoFile && useLocalAI) {
+      // Transcribe first with Whisper, then send transcript to Ollama
+      const audioFormData = new FormData();
+      audioFormData.append('file', videoFile);
+      const transcribeRes = await fetch('/api/transcribe', {
+        method: 'POST',
+        headers: { 'x-openai-key': settings.openaiKey || '' },
+        body: audioFormData,
+      });
+      const transcribeData = await transcribeRes.json();
+      if (!transcribeData.transcript) {
+        throw new Error(transcribeData.error || 'Transcription failed — set an OpenAI key in Admin → AI Settings for Whisper.');
+      }
+      res = await fetch('/api/generate-notes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-use-local-ai': 'true',
+          'x-ollama-model': settings.ollamaModel || 'llama3:latest',
+        },
+        body: JSON.stringify({ title, description, transcript: transcribeData.transcript }),
+      });
+    } else {
+      res = await fetch('/api/generate-notes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-use-local-ai': String(useLocalAI),
+          'x-ollama-model': settings.ollamaModel || 'llama3:latest',
+          'x-openai-model': settings.openaiModel || 'gpt-4o-mini',
+          'x-openai-key': settings.openaiKey || '',
+        },
+        body: JSON.stringify({ title, description }),
+      });
     }
+
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Note generation failed');
+    return data.notes as string;
+  };
+
+  const generateNotes = async () => {
+    if (!title) { setError('Please enter a title first'); return; }
     setGeneratingNotes(true);
     setNoteGenStep(1);
     setNoteGenProgress(10);
     setError('');
-    
     try {
-      // Get AI settings from localStorage
-      const aiSettings = localStorage.getItem('aiSettings');
-      const settings = aiSettings ? JSON.parse(aiSettings) : {};
-      const useLocalAI = settings.useLocalAI || false;
-      
-      let res;
-      
-      if (videoFile && !useLocalAI) {
-        // ChatGPT: Send audio directly to generate-notes API (it will transcribe internally)
-        setNoteGenStep(2);
-        setNoteGenProgress(30);
-        
-        const formData = new FormData();
-        formData.append('title', title);
-        formData.append('description', description);
-        formData.append('audio', videoFile);
-        
-        setNoteGenStep(3);
-        setNoteGenProgress(50);
-        
-        res = await fetch('/api/generate-notes', {
-          method: 'POST',
-          headers: {
-            'x-use-local-ai': 'false',
-            'x-openai-model': settings.openaiModel || 'gpt-4o-mini',
-            'x-openai-key': settings.openaiKey || '',
-          },
-          body: formData,
-        });
-        
-        setNoteGenProgress(90);
-      } else if (videoFile && useLocalAI) {
-        // Ollama: Transcribe first, then send transcript
-        setNoteGenStep(2);
-        setNoteGenProgress(30);
-        
-        // Transcribe using OpenAI Whisper first
-        const audioFormData = new FormData();
-        audioFormData.append('file', videoFile);
-        
-        const transcribeRes = await fetch('/api/transcribe', {
-          method: 'POST',
-          headers: {
-            'x-openai-key': settings.openaiKey || '',
-          },
-          body: audioFormData,
-        });
-        
-        setNoteGenProgress(60);
-        
-        const transcribeData = await transcribeRes.json();
-        const transcript = transcribeData.transcript || '';
-        
-        // Step 3: Send transcript to Ollama
-        setNoteGenStep(3);
-        setNoteGenProgress(75);
-        
-        res = await fetch('/api/generate-notes', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-use-local-ai': 'true',
-            'x-ollama-model': settings.ollamaModel || 'llama2',
-          },
-          body: JSON.stringify({ title, description, transcript }),
-        });
-        
-        setNoteGenProgress(90);
-      } else {
-        // No video: just generate from title/description
-        setNoteGenStep(3);
-        setNoteGenProgress(50);
-        
-        res = await fetch('/api/generate-notes', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-use-local-ai': String(useLocalAI),
-            'x-ollama-model': settings.ollamaModel || 'llama2',
-            'x-openai-model': settings.openaiModel || 'gpt-4o-mini',
-            'x-openai-key': settings.openaiKey || '',
-          },
-          body: JSON.stringify({ title, description }),
-        });
-        
-        setNoteGenProgress(90);
-      }
-      
-      const data = await res.json();
-      if (data.notes) {
-        setNotes(data.notes);
-        setNoteGenStep(4);
-        setNoteGenProgress(100);
-        
-        // Reset after showing completion
-        setTimeout(() => {
-          setNoteGenStep(0);
-          setNoteGenProgress(0);
-        }, 1500);
-      }
+      setNoteGenStep(videoFile ? 2 : 3);
+      setNoteGenProgress(videoFile ? 30 : 50);
+      const generated = await callGenerateNotes();
+      setNoteGenStep(4);
+      setNoteGenProgress(100);
+      setNotes(generated);
+      setTimeout(() => { setNoteGenStep(0); setNoteGenProgress(0); }, 1500);
     } catch (err) {
-      setError('Failed to generate notes. Make sure OpenAI API key is set in Admin > AI Settings.');
+      setError(err instanceof Error ? err.message : 'Failed to generate notes');
       setNoteGenStep(0);
       setNoteGenProgress(0);
     } finally {
@@ -187,13 +152,18 @@ export default function UploadLecturePage() {
   const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Check file size (max 100GB)
       if (file.size > 100 * 1024 * 1024 * 1024) {
         setError('Video file must be less than 100GB');
         return;
       }
       setVideoFile(file);
       setError('');
+      // Warn about Whisper 25MB limit for AI notes
+      if (file.size > 25 * 1024 * 1024) {
+        setError(
+          `⚠️ File is ${(file.size / 1024 / 1024).toFixed(0)} MB — AI notes from video require files under 25 MB (Whisper API limit). You can still upload the video and write notes manually, or use "Auto-Generate Notes" without a video.`
+        );
+      }
     }
   };
 
@@ -274,74 +244,6 @@ export default function UploadLecturePage() {
     }
   };
 
-  // Generate notes and return them (used by handleSubmit)
-  const generateNotesInternal = async (): Promise<string> => {
-    const aiSettings = localStorage.getItem('aiSettings');
-    const settings = aiSettings ? JSON.parse(aiSettings) : {};
-    const useLocalAI = settings.useLocalAI || false;
-    
-    let res;
-    
-    if (videoFile && !useLocalAI) {
-      // ChatGPT: Send audio directly
-      const formData = new FormData();
-      formData.append('title', title);
-      formData.append('description', description);
-      formData.append('audio', videoFile);
-      
-      res = await fetch('/api/generate-notes', {
-        method: 'POST',
-        headers: {
-          'x-use-local-ai': 'false',
-          'x-openai-model': settings.openaiModel || 'gpt-4o-mini',
-          'x-openai-key': settings.openaiKey || '',
-        },
-        body: formData,
-      });
-    } else if (videoFile && useLocalAI) {
-      // Ollama: Transcribe first, then send transcript
-      const audioFormData = new FormData();
-      audioFormData.append('file', videoFile);
-      
-      const transcribeRes = await fetch('/api/transcribe', {
-        method: 'POST',
-        headers: {
-          'x-openai-key': settings.openaiKey || '',
-        },
-        body: audioFormData,
-      });
-      
-      const transcribeData = await transcribeRes.json();
-      const transcript = transcribeData.transcript || '';
-      
-      res = await fetch('/api/generate-notes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-use-local-ai': 'true',
-          'x-ollama-model': settings.ollamaModel || 'llama2',
-        },
-        body: JSON.stringify({ title, description, transcript }),
-      });
-    } else {
-      // No video: just generate from title/description
-      res = await fetch('/api/generate-notes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-use-local-ai': String(useLocalAI),
-          'x-ollama-model': settings.ollamaModel || 'llama2',
-          'x-openai-model': settings.openaiModel || 'gpt-4o-mini',
-          'x-openai-key': settings.openaiKey || '',
-        },
-        body: JSON.stringify({ title, description }),
-      });
-    }
-    
-    const data = await res.json();
-    return data.notes || '';
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -353,30 +255,26 @@ export default function UploadLecturePage() {
       if (videoFile) {
         videoUrl = await uploadVideo();
       }
-      
-      // Always generate notes if not already present
+
+      // Auto-generate notes if not already written
       let finalNotes = notes;
       if (!finalNotes.trim()) {
         setGeneratingNotes(true);
         setNoteGenStep(2);
         setNoteGenProgress(30);
-        
         try {
           setNoteGenStep(3);
           setNoteGenProgress(60);
-          finalNotes = await generateNotesInternal();
+          finalNotes = await callGenerateNotes();
           setNotes(finalNotes);
           setNoteGenStep(4);
           setNoteGenProgress(100);
-        } catch {
-          // Continue with empty notes if generation fails
-          finalNotes = '';
+        } catch (genErr) {
+          // Notes generation failed — warn but still allow saving lecture without notes
+          console.warn('Note generation failed on submit:', genErr);
         } finally {
           setGeneratingNotes(false);
-          setTimeout(() => {
-            setNoteGenStep(0);
-            setNoteGenProgress(0);
-          }, 500);
+          setTimeout(() => { setNoteGenStep(0); setNoteGenProgress(0); }, 500);
         }
       }
 

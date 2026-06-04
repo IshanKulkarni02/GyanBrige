@@ -4,18 +4,15 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-const users = [
-  { id: '1', name: 'Arjun Kumar', email: 'student@gyan.com', role: 'student', status: 'active' },
-  { id: '2', name: 'Dr. Priya Sharma', email: 'teacher@gyan.com', role: 'teacher', status: 'active' },
-  { id: '3', name: 'Meera Patel', email: 'meera@gyan.com', role: 'student', status: 'active' },
-  { id: '4', name: 'Prof. Amit Verma', email: 'amit@gyan.com', role: 'teacher', status: 'inactive' },
-];
+interface UserRow { id: string; name: string; email: string; role: string; }
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<{ name: string; role: string } | null>(null);
+  const [user, setUser] = useState<{ id: string; name: string; role: string } | null>(null);
   const [useLocalAI, setUseLocalAI] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [recentUsers, setRecentUsers] = useState<UserRow[]>([]);
+  const [stats, setStats] = useState({ total: 0, teachers: 0, students: 0, courses: 0 });
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -25,12 +22,35 @@ export default function AdminDashboard() {
         router.push('/login');
       } else {
         setUser(parsed);
-        setLoading(false);
+        loadDashboard(parsed);
       }
     } else {
       router.push('/login');
     }
   }, [router]);
+
+  const loadDashboard = async (me: { id: string; role: string }) => {
+    try {
+      const [usersRes, coursesRes] = await Promise.all([
+        fetch('/api/users', { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
+        fetch('/api/courses', { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
+      ]);
+      const { users: allUsers } = await usersRes.json();
+      const { courses: allCourses } = await coursesRes.json();
+      const userList: UserRow[] = allUsers ?? [];
+      setRecentUsers(userList.slice(-5).reverse());
+      setStats({
+        total: userList.length,
+        teachers: userList.filter((u: UserRow) => u.role === 'teacher').length,
+        students: userList.filter((u: UserRow) => u.role === 'student').length,
+        courses: (allCourses ?? []).length,
+      });
+    } catch (e) {
+      console.error('Failed to load dashboard', e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -105,10 +125,10 @@ export default function AdminDashboard() {
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           {[
-            { label: 'Total Users', value: '156', icon: '👥', color: 'from-emerald-500 to-teal-500' },
-            { label: 'Teachers', value: '12', icon: '👨‍🏫', color: 'from-purple-500 to-indigo-500' },
-            { label: 'Students', value: '142', icon: '🎓', color: 'from-amber-500 to-orange-500' },
-            { label: 'Active Classes', value: '8', icon: '🏫', color: 'from-blue-500 to-cyan-500' },
+            { label: 'Total Users', value: String(stats.total), icon: '👥', color: 'from-emerald-500 to-teal-500' },
+            { label: 'Teachers', value: String(stats.teachers), icon: '👨‍🏫', color: 'from-purple-500 to-indigo-500' },
+            { label: 'Students', value: String(stats.students), icon: '🎓', color: 'from-amber-500 to-orange-500' },
+            { label: 'Active Courses', value: String(stats.courses), icon: '🏫', color: 'from-blue-500 to-cyan-500' },
           ].map((stat, i) => (
             <div key={i} className="glass rounded-xl p-6">
               <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${stat.color} flex items-center justify-center mb-4`}>
@@ -163,11 +183,11 @@ export default function AdminDashboard() {
               <span className="text-emerald-400/50 text-sm">View All →</span>
             </div>
             <div className="glass rounded-xl overflow-hidden">
-              {users.map((u, i) => (
+              {recentUsers.map((u, i) => (
                 <div
                   key={u.id}
                   className={`flex items-center gap-4 p-4 ${
-                    i !== users.length - 1 ? 'border-b border-white/10' : ''
+                    i !== recentUsers.length - 1 ? 'border-b border-white/10' : ''
                   }`}
                 >
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
@@ -179,10 +199,8 @@ export default function AdminDashboard() {
                     <h4 className="font-medium">{u.name}</h4>
                     <p className="text-white/50 text-sm">{u.email}</p>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-xs ${
-                    u.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-white/50'
-                  }`}>
-                    {u.status}
+                  <span className="px-3 py-1 rounded-full text-xs bg-emerald-500/20 text-emerald-400">
+                    {u.role}
                   </span>
                 </div>
               ))}

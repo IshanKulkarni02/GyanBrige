@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { enrollments, courses, lectures, users } from '@/lib/db';
+import { requireAuth } from '@/lib/server-auth';
 
 // GET enrollments for a user
 export async function GET(request: NextRequest) {
@@ -41,6 +42,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ enrollments: enriched });
     }
 
+    // Teachers and admins may fetch all enrollments
+    const caller = requireAuth(request);
+    if (caller && (caller.role === 'teacher' || caller.role === 'admin')) {
+      return NextResponse.json({ enrollments: enrollments.getAll() });
+    }
     return NextResponse.json({ error: 'userId or courseId required' }, { status: 400 });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch enrollments' }, { status: 500 });

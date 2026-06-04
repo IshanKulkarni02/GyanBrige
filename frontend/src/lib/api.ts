@@ -48,14 +48,21 @@ export interface Enrollment {
 }
 
 // Helper
+function getStoredUser(): { id: string; role: string } | null {
+  if (typeof window === 'undefined') return null;
+  try { return JSON.parse(localStorage.getItem('user') ?? ''); } catch { return null; }
+}
+
 async function fetchAPI<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const user = getStoredUser();
   const res = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(user ? { 'x-user-id': user.id, 'x-user-role': user.role } : {}),
       ...options.headers,
     },
   });

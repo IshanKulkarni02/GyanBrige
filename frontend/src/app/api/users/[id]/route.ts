@@ -1,42 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { users } from '@/lib/db';
+import { requireAuth, requireAdmin } from '@/lib/server-auth';
 
-// GET single user
+// GET single user — requires auth
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!requireAuth(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   try {
     const { id } = await params;
     const user = users.getById(id);
-
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
-
     return NextResponse.json({
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        createdAt: user.createdAt,
-        macAddress: user.macAddress ?? null,
-      }
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, createdAt: user.createdAt, macAddress: user.macAddress ?? null },
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to fetch user' }, { status: 500 });
   }
 }
 
-// PUT update user
+// PUT update user — requires admin OR the user themselves
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const caller = requireAuth(request);
+  if (!caller) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const { id } = await params;
+  if (caller.role !== 'admin' && caller.id !== id) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   try {
-    const { id } = await params;
     const body = await request.json();
+    // Non-admins cannot change their own role
+    if (caller.role !== 'admin') delete body.role;
 
     if (body.macAddress !== undefined && body.macAddress !== null && body.macAddress !== '') {
       const macRegex = /^([0-9a-fA-F]{2}[:\-]){5}[0-9a-fA-F]{2}$/;
@@ -50,38 +54,31 @@ export async function PUT(
     if (!updated) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
-
     return NextResponse.json({
       success: true,
-      user: {
-        id: updated.id,
-        name: updated.name,
-        email: updated.email,
-        role: updated.role,
-        createdAt: updated.createdAt,
-        macAddress: updated.macAddress ?? null,
-      }
+      user: { id: updated.id, name: updated.name, email: updated.email, role: updated.role, createdAt: updated.createdAt, macAddress: updated.macAddress ?? null },
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to update user' }, { status: 500 });
   }
 }
 
-// DELETE user
+// DELETE user — requires admin
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!requireAdmin(request)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   try {
     const { id } = await params;
     const deleted = users.delete(id);
-
     if (!deleted) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
-
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to delete user' }, { status: 500 });
   }
 }
