@@ -12,12 +12,17 @@ export async function GET(request: NextRequest) {
   const isAdmin = caller?.role === 'admin';
 
   return NextResponse.json({
+    // AI
     useLocalAI:   all.useLocalAI === 'true',
     ollamaModel:  all.ollamaModel  || 'llama3:latest',
     openaiModel:  all.openaiModel  || 'gpt-4o-mini',
-    // Only admins see the full key; others see whether one is configured
     openaiKey:    isAdmin ? (all.openaiKey || '') : (all.openaiKey ? '••••••••' : ''),
     hasOpenaiKey: !!all.openaiKey,
+    // Site
+    siteName:        all.siteName        || 'GyanBrige',
+    allowSignup:     all.allowSignup     !== 'false',
+    requireApproval: all.requireApproval === 'true',
+    maxUploadSizeGb: all.maxUploadSizeGb || '25',
   });
 }
 
@@ -27,11 +32,17 @@ export async function PUT(request: NextRequest) {
 
   const body = await request.json();
 
+  // AI settings
   if ('useLocalAI'  in body) settings.set('useLocalAI',  String(!!body.useLocalAI));
   if ('ollamaModel' in body) settings.set('ollamaModel', String(body.ollamaModel || 'llama3:latest'));
   if ('openaiModel' in body) settings.set('openaiModel', String(body.openaiModel || 'gpt-4o-mini'));
-  // Allow clearing the key by sending empty string
   if ('openaiKey'   in body) settings.set('openaiKey',   String(body.openaiKey  || ''));
+
+  // Site settings
+  if ('siteName'        in body) settings.set('siteName',        String(body.siteName        || 'GyanBrige'));
+  if ('allowSignup'     in body) settings.set('allowSignup',     String(!!body.allowSignup));
+  if ('requireApproval' in body) settings.set('requireApproval', String(!!body.requireApproval));
+  if ('maxUploadSizeGb' in body) settings.set('maxUploadSizeGb', String(body.maxUploadSizeGb || '25'));
 
   return NextResponse.json({ success: true });
 }

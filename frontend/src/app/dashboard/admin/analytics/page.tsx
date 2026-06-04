@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/api';
 
 export default function AnalyticsPage() {
   const router = useRouter();
@@ -34,23 +35,22 @@ export default function AnalyticsPage() {
 
   const loadStats = async () => {
     try {
-      const [usersRes, coursesRes] = await Promise.all([
-        fetch('/api/users'),
-        fetch('/api/courses'),
+      const [usersRes, coursesRes, enrollmentsRes] = await Promise.all([
+        authFetch('/api/users'),
+        authFetch('/api/courses'),
+        authFetch('/api/enrollments'),
       ]);
-      const usersData = await usersRes.json();
-      const coursesData = await coursesRes.json();
-      
-      const users = usersData.users || [];
-      const courses = coursesData.courses || [];
-      
+      const { users = [] }       = await usersRes.json();
+      const { courses = [] }     = await coursesRes.json();
+      const { enrollments = [] } = await enrollmentsRes.json().catch(() => ({ enrollments: [] }));
+
       setStats({
-        users: users.length,
-        students: users.filter((u: { role: string }) => u.role === 'student').length,
-        teachers: users.filter((u: { role: string }) => u.role === 'teacher').length,
-        courses: courses.length,
-        lectures: courses.reduce((sum: number, c: { lectureCount?: number }) => sum + (c.lectureCount || 0), 0),
-        enrollments: courses.reduce((sum: number, c: { studentCount?: number }) => sum + (c.studentCount || 0), 0),
+        users:       users.length,
+        students:    users.filter((u: { role: string }) => u.role === 'student').length,
+        teachers:    users.filter((u: { role: string }) => u.role === 'teacher').length,
+        courses:     courses.length,
+        lectures:    courses.reduce((s: number, c: { lectureCount?: number }) => s + (c.lectureCount ?? 0), 0),
+        enrollments: enrollments.length,
       });
     } catch (err) {
       console.error('Failed to load stats:', err);
@@ -159,24 +159,28 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* Growth Trends */}
+        {/* Derived stats */}
         <div className="glass rounded-2xl p-6 lg:col-span-2">
-          <h2 className="text-xl font-semibold mb-4">Platform Health</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {[
-              { label: 'Student Engagement', value: '85%', trend: '↑ 12%', positive: true },
-              { label: 'Course Completion', value: '72%', trend: '↑ 8%', positive: true },
-              { label: 'Active Users (7d)', value: stats.users, trend: '↑ 5%', positive: true },
-              { label: 'Avg Session Time', value: '24m', trend: '↑ 3m', positive: true },
-            ].map((item, i) => (
-              <div key={i} className="bg-white/5 rounded-xl p-4">
-                <div className="text-2xl font-bold">{item.value}</div>
-                <div className="text-white/60 text-sm">{item.label}</div>
-                <div className={`text-sm mt-2 ${item.positive ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {item.trend}
-                </div>
+          <h2 className="text-xl font-semibold mb-4">Platform Summary</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white/5 rounded-xl p-4">
+              <div className="text-2xl font-bold text-emerald-400">
+                {stats.students > 0 ? Math.round((stats.enrollments / stats.students) * 10) / 10 : 0}
               </div>
-            ))}
+              <div className="text-white/60 text-sm">Avg courses per student</div>
+            </div>
+            <div className="bg-white/5 rounded-xl p-4">
+              <div className="text-2xl font-bold text-amber-400">
+                {stats.courses > 0 ? Math.round(stats.lectures / stats.courses * 10) / 10 : 0}
+              </div>
+              <div className="text-white/60 text-sm">Avg lectures per course</div>
+            </div>
+            <div className="bg-white/5 rounded-xl p-4">
+              <div className="text-2xl font-bold text-blue-400">
+                {stats.courses > 0 ? Math.round(stats.enrollments / stats.courses * 10) / 10 : 0}
+              </div>
+              <div className="text-white/60 text-sm">Avg enrollments per course</div>
+            </div>
           </div>
         </div>
       </div>
