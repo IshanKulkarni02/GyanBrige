@@ -44,3 +44,13 @@ next-env.d.ts
 
 # Runtime logs
 frontend/logs/
+.pnpm-store/
+.expo/
+.env.*.local
+coverage/
+.idea/
+.vscode/
+!.vscode/extensions.json
+src-tauri/target/
+*.tar.gz
+storage/
