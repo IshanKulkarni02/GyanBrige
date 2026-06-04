@@ -35,7 +35,10 @@ export default function UploadLecturePage() {
   const [notes, setNotes] = useState('');
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [detectingChapters, setDetectingChapters] = useState(false);
-  const [savedLectureId, setSavedLectureId] = useState<string | null>(null);
+  const [savedLectureId, setSavedLectureId]   = useState<string | null>(null);
+  const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null); // server path after upload
+  const [youtubeUrl, setYoutubeUrl]             = useState('');
+  const [youtubeMode, setYoutubeMode]           = useState(false);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -47,6 +50,7 @@ export default function UploadLecturePage() {
   const [generatingNotes, setGeneratingNotes] = useState(false);
   const [noteGenStep, setNoteGenStep] = useState(0); // 0: idle, 1: preparing, 2: transcribing, 3: generating, 4: done
   const [noteGenProgress, setNoteGenProgress] = useState(0);
+  const [noteGenStatus, setNoteGenStatus] = useState('');
   // AI settings loaded from server (not localStorage)
   const [aiSettings, setAiSettings] = useState<{ useLocalAI: boolean; ollamaModel: string; openaiModel: string; hasOpenaiKey: boolean }>({
     useLocalAI: false, ollamaModel: 'llama3:latest', openaiModel: 'gpt-4o-mini', hasOpenaiKey: false,
@@ -91,35 +95,65 @@ export default function UploadLecturePage() {
     }
   };
 
+  const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024; // 50 MB — above this, upload first
+
   const callGenerateNotes = async (): Promise<string> => {
-    // AI key + model are read server-side from the settings DB — no need to pass them
     let res: Response;
 
-    if (videoFile && !aiSettings.useLocalAI) {
-      // OpenAI path: send video directly, server transcribes + generates
+    // ── YouTube URL path ───────────────────────────────────────────────────────
+    if (youtubeMode && youtubeUrl.trim()) {
+      setNoteGenStatus('Fetching YouTube transcript…');
+      const ytRes = await authFetch('/api/transcribe/youtube', {
+        method: 'POST', body: JSON.stringify({ url: youtubeUrl }),
+      });
+      const ytData = await ytRes.json();
+      if (!ytRes.ok) throw new Error(ytData.error || 'YouTube transcript failed');
+      res = await authFetch('/api/generate-notes', {
+        method: 'POST',
+        body: JSON.stringify({ title, description, transcript: ytData.transcript }),
+      });
+    }
+    // ── Large video: upload first, then use server-side path ──────────────────
+    else if (videoFile && videoFile.size > LARGE_FILE_THRESHOLD && !uploadedVideoUrl) {
+      setNoteGenStatus('Uploading video first (large file)…');
+      const url = await uploadVideo();
+      if (url) setUploadedVideoUrl(url);
+      res = await authFetch('/api/generate-notes', {
+        method: 'POST',
+        body: JSON.stringify({ title, description, videoUrl: url }),
+      });
+    }
+    // ── Already uploaded: use server path ─────────────────────────────────────
+    else if (uploadedVideoUrl) {
+      res = await authFetch('/api/generate-notes', {
+        method: 'POST',
+        body: JSON.stringify({ title, description, videoUrl: uploadedVideoUrl }),
+      });
+    }
+    // ── Small video: send directly ────────────────────────────────────────────
+    else if (videoFile && !aiSettings.useLocalAI) {
       const formData = new FormData();
       formData.append('title', title);
       formData.append('description', description);
       formData.append('audio', videoFile);
       res = await authFetch('/api/generate-notes', { method: 'POST', body: formData });
-    } else if (videoFile && aiSettings.useLocalAI) {
-      // Ollama path: transcribe with Whisper first, then send transcript
+    }
+    // ── Ollama path ───────────────────────────────────────────────────────────
+    else if (videoFile && aiSettings.useLocalAI) {
       const audioFormData = new FormData();
       audioFormData.append('file', videoFile);
       const transcribeRes = await authFetch('/api/transcribe', { method: 'POST', body: audioFormData });
       const transcribeData = await transcribeRes.json();
-      if (!transcribeData.transcript) {
-        throw new Error(transcribeData.error || 'Transcription failed — make sure an OpenAI key is set in Admin → AI Settings.');
-      }
+      if (!transcribeData.transcript) throw new Error(transcribeData.error || 'Transcription failed');
       res = await authFetch('/api/generate-notes', {
         method: 'POST',
         body: JSON.stringify({ title, description, transcript: transcribeData.transcript }),
       });
-    } else {
-      // No video: generate from title + description only
+    }
+    // ── No video: title only ──────────────────────────────────────────────────
+    else {
       res = await authFetch('/api/generate-notes', {
-        method: 'POST',
-        body: JSON.stringify({ title, description }),
+        method: 'POST', body: JSON.stringify({ title, description }),
       });
     }
 
@@ -478,38 +512,50 @@ export default function UploadLecturePage() {
 
           {/* Video Upload */}
           <div>
-            <label className="block text-sm text-white/70 mb-2">Lecture Video</label>
-            <div className="border-2 border-dashed border-white/20 rounded-xl p-6 text-center hover:border-emerald-500/50 transition cursor-pointer"
-              onClick={() => document.getElementById('video-input')?.click()}
-            >
-              <input
-                id="video-input"
-                type="file"
-                accept="video/*"
-                onChange={handleVideoChange}
-                className="hidden"
-              />
-              {videoFile ? (
-                <div>
-                  <span className="text-4xl block mb-2">🎬</span>
-                  <p className="text-emerald-400 font-medium">{videoFile.name}</p>
-                  <p className="text-white/50 text-sm">{(videoFile.size / (1024 * 1024)).toFixed(2)} MB</p>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setVideoFile(null); setWarning(''); }}
-                    className="text-red-400 text-sm mt-2 hover:text-red-300"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <span className="text-4xl block mb-2">📹</span>
-                  <p className="text-white/70">Click to upload video</p>
-                  <p className="text-white/40 text-sm">MP4, WebM, MOV (max 25 GB)</p>
-                </div>
-              )}
+            {/* Toggle: file upload vs YouTube URL */}
+            <div className="flex gap-2 mb-3">
+              <button type="button" onClick={() => setYoutubeMode(false)}
+                className={`px-3 py-1.5 rounded-lg text-sm transition ${!youtubeMode ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}>
+                📁 Upload File
+              </button>
+              <button type="button" onClick={() => setYoutubeMode(true)}
+                className={`px-3 py-1.5 rounded-lg text-sm transition ${youtubeMode ? 'bg-red-500/20 text-red-400' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}>
+                ▶ YouTube URL
+              </button>
             </div>
+
+            {youtubeMode ? (
+              <div>
+                <input type="url" value={youtubeUrl} onChange={e => setYoutubeUrl(e.target.value)}
+                  className="input-glass" placeholder="https://www.youtube.com/watch?v=..." />
+                <p className="text-white/40 text-xs mt-1">
+                  Uses YouTube auto-captions (free, instant, no Whisper cost).
+                </p>
+              </div>
+            ) : (
+              <div
+                className="border-2 border-dashed border-white/20 rounded-xl p-6 text-center hover:border-emerald-500/50 transition cursor-pointer"
+                onClick={() => document.getElementById('video-input')?.click()}
+              >
+                <input id="video-input" type="file" accept="video/*" onChange={handleVideoChange} className="hidden" />
+                {videoFile ? (
+                  <div>
+                    <span className="text-4xl block mb-2">🎬</span>
+                    <p className="text-emerald-400 font-medium">{videoFile.name}</p>
+                    <p className="text-white/50 text-sm">{(videoFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setVideoFile(null); setWarning(''); }}
+                      className="text-red-400 text-sm mt-2 hover:text-red-300">Remove</button>
+                  </div>
+                ) : (
+                  <div>
+                    <span className="text-4xl block mb-2">📹</span>
+                    <p className="text-white/70">Click to upload video</p>
+                    <p className="text-white/40 text-sm">MP4, WebM, MOV (max 25 GB)</p>
+                  </div>
+                )}
+              </div>
+            )}
+            {!youtubeMode && videoFile && null /* placeholder for uploading below */}
             {uploading && (
               <div className="mt-3 p-4 bg-white/5 border border-white/10 rounded-xl space-y-2">
                 {/* Phase label + percentage */}
@@ -565,6 +611,7 @@ export default function UploadLecturePage() {
                 <span>{warning}</span>
               </div>
             )}
+            </>)}
           </div>
 
           {/* Notes */}
