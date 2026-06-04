@@ -77,11 +77,12 @@ export async function withRetry<T>(
 //   ✗ error    (message + first 4 stack frames) written to error.log
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Handler = (req: NextRequest, ctx?: any) => Promise<NextResponse>;
+type Handler = (req: NextRequest, ctx?: any) => Promise<Response | NextResponse>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function logRoute(handler: Handler): Handler {
-  return async (req: NextRequest, ctx?: any): Promise<NextResponse> => {
+export function logRoute(handler: Handler): (req: NextRequest, ctx?: any) => Promise<Response | NextResponse> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return async (req: NextRequest, ctx?: any): Promise<Response | NextResponse> => {
     const start  = Date.now();
     const uid    = req.headers.get('x-user-id')   ?? 'anon';
     const role   = req.headers.get('x-user-role')  ?? '-';
