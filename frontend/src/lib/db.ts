@@ -149,6 +149,11 @@ db.exec(`
     createdAt TEXT NOT NULL,
     expiresAt TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -467,4 +472,20 @@ export const invites = {
   },
 };
 
-export default { users, courses, lectures, enrollments, attendance, invites };
+// ─── Settings (server-side key-value store) ───────────────────────────────────
+
+export const settings = {
+  get(key: string): string | null {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  },
+  set(key: string, value: string): void {
+    db.prepare('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, value);
+  },
+  getAll(): Record<string, string> {
+    const rows = db.prepare('SELECT key,value FROM settings').all() as { key: string; value: string }[];
+    return Object.fromEntries(rows.map(r => [r.key, r.value]));
+  },
+};
+
+export default { users, courses, lectures, enrollments, attendance, invites, settings };

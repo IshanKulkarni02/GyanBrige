@@ -13,7 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { lectures, type Segment, type Chapter } from '@/lib/db';
+import { lectures, settings as dbSettings, type Segment, type Chapter } from '@/lib/db';
 import { requireAuth } from '@/lib/server-auth';
 
 export const maxDuration = 3600;
@@ -146,8 +146,9 @@ export async function POST(
   const lecture = lectures.getById(id);
   if (!lecture) return NextResponse.json({ error: 'Lecture not found' }, { status: 404 });
 
-  const openaiKey  = request.headers.get('x-openai-key') || process.env.OPENAI_API_KEY;
-  const openaiModel = request.headers.get('x-openai-model') || 'gpt-4o-mini';
+  const storedSettings = dbSettings.getAll();
+  const openaiKey   = storedSettings.openaiKey   || process.env.OPENAI_API_KEY;
+  const openaiModel = storedSettings.openaiModel || request.headers.get('x-openai-model') || 'gpt-4o-mini';
 
   if (!openaiKey) {
     return NextResponse.json({ error: 'OpenAI API key required. Set it in Admin → AI Settings.' }, { status: 400 });

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { settings as dbSettings } from '@/lib/db';
 
 // Whisper hard limit per request — we split larger files into chunks
 const WHISPER_CHUNK_BYTES = 24 * 1024 * 1024; // 24 MB (1 MB headroom)
@@ -53,10 +54,12 @@ async function transcribeAudio(audioFile: File, openaiKey: string): Promise<stri
 
 export async function POST(request: NextRequest) {
   try {
-    const useLocalAI = request.headers.get('x-use-local-ai') === 'true';
-    const ollamaModel = request.headers.get('x-ollama-model') || 'llama3:latest';
-    const openaiModel = request.headers.get('x-openai-model') || 'gpt-4o-mini';
-    const openaiKey = request.headers.get('x-openai-key') || process.env.OPENAI_API_KEY;
+    // Read AI settings from DB (server-side); fall back to env var
+    const storedSettings = dbSettings.getAll();
+    const useLocalAI  = storedSettings.useLocalAI === 'true';
+    const ollamaModel = storedSettings.ollamaModel || request.headers.get('x-ollama-model') || 'llama3:latest';
+    const openaiModel = storedSettings.openaiModel || request.headers.get('x-openai-model') || 'gpt-4o-mini';
+    const openaiKey   = storedSettings.openaiKey   || process.env.OPENAI_API_KEY;
 
     let title = '';
     let description = '';
