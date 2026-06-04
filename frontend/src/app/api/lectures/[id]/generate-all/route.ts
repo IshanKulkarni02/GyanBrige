@@ -22,7 +22,7 @@ import { promisify } from 'util';
 import { tmpdir } from 'os';
 import path from 'path';
 import { Readable } from 'stream';
-import { logRoute } from '@/lib/logger';
+import { logRoute, withRetry } from '@/lib/logger';
 
 export const maxDuration = 3600;
 
@@ -60,11 +60,13 @@ async function transcribeChunkFromDisk(filePath: string, start: number, end: num
   fd.append('model', 'whisper-1');
   fd.append('response_format', 'text');
   if (language && language !== 'auto') fd.append('language', language);
-  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: fd,
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e?.error?.message || `Whisper ${res.status}`); }
-  return res.text();
+  return withRetry(async () => {
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: fd,
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e?.error?.message || `Whisper ${res.status}`); }
+    return res.text();
+  }, 3, 3000, `Whisper part${partNum}`);
 }
 
 // ── Transcribe any video file: extract audio → chunk → Whisper ───────────────
