@@ -120,9 +120,13 @@ export default function TeacherCoursePage() {
     if (!editingLecture) return;
     setRegenNotes(true);
     try {
+      // Server reads the API key and model from the settings DB — no headers needed
       const res = await authFetch('/api/generate-notes', {
         method: 'POST',
-        body: JSON.stringify({ title: editingLecture.title, description: editingLecture.description }),
+        body: JSON.stringify({
+          title: editingLecture.title,
+          description: editingLecture.description,
+        }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error);

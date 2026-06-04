@@ -47,6 +47,10 @@ export default function UploadLecturePage() {
   const [generatingNotes, setGeneratingNotes] = useState(false);
   const [noteGenStep, setNoteGenStep] = useState(0); // 0: idle, 1: preparing, 2: transcribing, 3: generating, 4: done
   const [noteGenProgress, setNoteGenProgress] = useState(0);
+  // AI settings loaded from server (not localStorage)
+  const [aiSettings, setAiSettings] = useState<{ useLocalAI: boolean; ollamaModel: string; openaiModel: string; hasOpenaiKey: boolean }>({
+    useLocalAI: false, ollamaModel: 'llama3:latest', openaiModel: 'gpt-4o-mini', hasOpenaiKey: false,
+  });
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -63,6 +67,18 @@ export default function UploadLecturePage() {
     }
   }, [router]);
 
+  // Load AI settings from server on mount
+  useEffect(() => {
+    authFetch('/api/settings').then(r => r.json()).then(d => {
+      setAiSettings({
+        useLocalAI:   !!d.useLocalAI,
+        ollamaModel:  d.ollamaModel  || 'llama3:latest',
+        openaiModel:  d.openaiModel  || 'gpt-4o-mini',
+        hasOpenaiKey: !!d.hasOpenaiKey,
+      });
+    }).catch(() => {});
+  }, []);
+
   const loadCourses = async (teacherId: string) => {
     try {
       const res = await authFetch(`/api/courses?teacherId=${teacherId}`);
@@ -76,58 +92,33 @@ export default function UploadLecturePage() {
   };
 
   const callGenerateNotes = async (): Promise<string> => {
-    const aiSettings = localStorage.getItem('aiSettings');
-    const settings = aiSettings ? JSON.parse(aiSettings) : {};
-    const useLocalAI = settings.useLocalAI || false;
-
+    // AI key + model are read server-side from the settings DB — no need to pass them
     let res: Response;
 
-    if (videoFile && !useLocalAI) {
+    if (videoFile && !aiSettings.useLocalAI) {
+      // OpenAI path: send video directly, server transcribes + generates
       const formData = new FormData();
       formData.append('title', title);
       formData.append('description', description);
       formData.append('audio', videoFile);
-      res = await authFetch('/api/generate-notes', {
-        method: 'POST',
-        headers: {
-          'x-use-local-ai': 'false',
-          'x-openai-model': settings.openaiModel || 'gpt-4o-mini',
-          'x-openai-key': settings.openaiKey || '',
-        },
-        body: formData,
-      });
-    } else if (videoFile && useLocalAI) {
-      // Transcribe first with Whisper, then send transcript to Ollama
+      res = await authFetch('/api/generate-notes', { method: 'POST', body: formData });
+    } else if (videoFile && aiSettings.useLocalAI) {
+      // Ollama path: transcribe with Whisper first, then send transcript
       const audioFormData = new FormData();
       audioFormData.append('file', videoFile);
-      const transcribeRes = await authFetch('/api/transcribe', {
-        method: 'POST',
-        headers: { 'x-openai-key': settings.openaiKey || '' },
-        body: audioFormData,
-      });
+      const transcribeRes = await authFetch('/api/transcribe', { method: 'POST', body: audioFormData });
       const transcribeData = await transcribeRes.json();
       if (!transcribeData.transcript) {
-        throw new Error(transcribeData.error || 'Transcription failed — set an OpenAI key in Admin → AI Settings for Whisper.');
+        throw new Error(transcribeData.error || 'Transcription failed — make sure an OpenAI key is set in Admin → AI Settings.');
       }
       res = await authFetch('/api/generate-notes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-use-local-ai': 'true',
-          'x-ollama-model': settings.ollamaModel || 'llama3:latest',
-        },
         body: JSON.stringify({ title, description, transcript: transcribeData.transcript }),
       });
     } else {
+      // No video: generate from title + description only
       res = await authFetch('/api/generate-notes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-use-local-ai': String(useLocalAI),
-          'x-ollama-model': settings.ollamaModel || 'llama3:latest',
-          'x-openai-model': settings.openaiModel || 'gpt-4o-mini',
-          'x-openai-key': settings.openaiKey || '',
-        },
         body: JSON.stringify({ title, description }),
       });
     }
@@ -139,29 +130,21 @@ export default function UploadLecturePage() {
 
   const detectChapters = async () => {
     if (!videoFile) { toast.error('Select a video first'); return; }
-    const aiSettings = localStorage.getItem('aiSettings');
-    const settings = aiSettings ? JSON.parse(aiSettings) : {};
-    if (!settings.openaiKey && !process.env.NEXT_PUBLIC_OPENAI_API_KEY) {
-      toast.error('OpenAI API key required — set it in Admin → AI Settings');
+    if (!aiSettings.hasOpenaiKey) {
+      toast.error('OpenAI API key not set — go to Admin → AI Settings and save your key');
       return;
     }
     setDetectingChapters(true);
     try {
       const fd = new FormData();
       fd.append('audio', videoFile);
-      const res = await authFetch(
-        savedLectureId ? `/api/lectures/${savedLectureId}/chapters` : '/api/lectures/temp/chapters',
-        {
-          method: 'POST',
-          headers: {
-            'x-openai-key': settings.openaiKey || '',
-            'x-openai-model': settings.openaiModel || 'gpt-4o-mini',
-          },
-          body: fd,
-        }
-      );
+      // Use a temporary lecture endpoint if not yet saved, otherwise patch the real one
+      const endpoint = savedLectureId
+        ? `/api/lectures/${savedLectureId}/chapters`
+        : `/api/lectures/detect-chapters-temp`;
+      const res = await authFetch(endpoint, { method: 'POST', body: fd });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(data.error || data.message);
       setChapters(data.chapters);
       toast.success(`${data.chapters.length} chapters detected!`);
     } catch (err) {
