@@ -4,6 +4,9 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authFetch, getStoredUser } from '@/lib/api';
+import { toast } from 'sonner';
+
+interface Chapter { startSec: number; title: string; }
 
 interface Course {
   id: string;
@@ -30,6 +33,9 @@ export default function UploadLecturePage() {
   const [description, setDescription] = useState('');
   const [courseId, setCourseId] = useState('');
   const [notes, setNotes] = useState('');
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [detectingChapters, setDetectingChapters] = useState(false);
+  const [savedLectureId, setSavedLectureId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -129,6 +135,40 @@ export default function UploadLecturePage() {
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || 'Note generation failed');
     return data.notes as string;
+  };
+
+  const detectChapters = async () => {
+    if (!videoFile) { toast.error('Select a video first'); return; }
+    const aiSettings = localStorage.getItem('aiSettings');
+    const settings = aiSettings ? JSON.parse(aiSettings) : {};
+    if (!settings.openaiKey && !process.env.NEXT_PUBLIC_OPENAI_API_KEY) {
+      toast.error('OpenAI API key required — set it in Admin → AI Settings');
+      return;
+    }
+    setDetectingChapters(true);
+    try {
+      const fd = new FormData();
+      fd.append('audio', videoFile);
+      const res = await authFetch(
+        savedLectureId ? `/api/lectures/${savedLectureId}/chapters` : '/api/lectures/temp/chapters',
+        {
+          method: 'POST',
+          headers: {
+            'x-openai-key': settings.openaiKey || '',
+            'x-openai-model': settings.openaiModel || 'gpt-4o-mini',
+          },
+          body: fd,
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setChapters(data.chapters);
+      toast.success(`${data.chapters.length} chapters detected!`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Chapter detection failed');
+    } finally {
+      setDetectingChapters(false);
+    }
   };
 
   const generateNotes = async () => {
@@ -337,6 +377,7 @@ export default function UploadLecturePage() {
           duration: 0,
           notes: finalNotes,
           videoUrl,
+          chapters,
         }),
       });
 
@@ -345,14 +386,18 @@ export default function UploadLecturePage() {
         throw new Error(data.error || 'Failed to create lecture');
       }
 
+      const created = await res.json();
+      setSavedLectureId(created.lecture?.id ?? null);
       setSuccess(true);
+      toast.success('Lecture created!');
       // Reset form
       setTitle('');
       setDescription('');
       setCourseId('');
       setNotes('');
+      setChapters([]);
       setVideoFile(null);
-      
+
       // Redirect after 2 seconds
       setTimeout(() => {
         router.push('/dashboard/teacher');
@@ -567,12 +612,43 @@ export default function UploadLecturePage() {
               placeholder="# Topic 1&#10;&#10;- Key point 1&#10;- Key point 2&#10;&#10;# Topic 2&#10;..."
             />
             <p className="text-white/40 text-xs mt-1">
-              {videoFile 
+              {videoFile
                 ? 'Click "Generate from Video" to transcribe audio and create AI notes from the lecture content'
-                : 'Click "Auto-Generate Notes" to create AI-powered notes based on the title and description'
-              }
+                : 'Click "Auto-Generate Notes" to create AI-powered notes based on the title and description'}
             </p>
-            
+
+            {/* Detect Chapters button (visible when video selected) */}
+            {videoFile && (
+              <button
+                type="button"
+                onClick={detectChapters}
+                disabled={detectingChapters}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-sm hover:bg-blue-500/30 disabled:opacity-50 transition mt-2"
+              >
+                {detectingChapters
+                  ? <><span className="animate-spin">⚙️</span> Detecting chapters...</>
+                  : <>🔖 Detect Chapters from Video</>}
+              </button>
+            )}
+
+            {/* Chapter preview */}
+            {chapters.length > 0 && (
+              <div className="mt-3 glass rounded-xl overflow-hidden">
+                <div className="px-4 py-2 border-b border-white/10 flex items-center gap-2">
+                  <span className="text-sm font-medium text-blue-300">🔖 {chapters.length} chapters detected</span>
+                  <span className="text-xs text-white/40">· will be saved with this lecture</span>
+                </div>
+                {chapters.map((ch, i) => (
+                  <div key={i} className="flex items-center gap-3 px-4 py-2 border-b border-white/5 last:border-0">
+                    <span className="text-xs text-white/40 font-mono w-12 shrink-0">
+                      {Math.floor(ch.startSec / 60)}:{String(Math.floor(ch.startSec % 60)).padStart(2, '0')}
+                    </span>
+                    <span className="text-sm text-white/80">{ch.title}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Progress Bar with Waypoints */}
             {generatingNotes && (
               <div className="mt-4 p-4 bg-white/5 rounded-xl">

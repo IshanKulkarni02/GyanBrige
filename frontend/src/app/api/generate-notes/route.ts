@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // Whisper hard limit per request — we split larger files into chunks
 const WHISPER_CHUNK_BYTES = 24 * 1024 * 1024; // 24 MB (1 MB headroom)
 
-/** Transcribe a single ≤24 MB audio blob */
+/** Transcribe a single ≤24 MB audio blob — plain text */
 async function transcribeChunk(blob: Blob, filename: string, openaiKey: string): Promise<string> {
   const formData = new FormData();
   formData.append('file', blob, filename);

@@ -32,6 +32,9 @@ export interface Course {
   createdAt: string;
 }
 
+export interface Segment { start: number; end: number; text: string; }
+export interface Chapter { startSec: number; title: string; }
+
 export interface Lecture {
   id: string;
   courseId: string;
@@ -40,6 +43,8 @@ export interface Lecture {
   videoUrl?: string;
   duration: number;
   notes: string;
+  segments: Segment[];
+  chapters: Chapter[];
   order: number;
   createdAt: string;
 }
@@ -111,6 +116,8 @@ db.exec(`
     videoUrl    TEXT,
     duration    INTEGER NOT NULL DEFAULT 30,
     notes       TEXT NOT NULL DEFAULT '',
+    segments    TEXT NOT NULL DEFAULT '[]',
+    chapters    TEXT NOT NULL DEFAULT '[]',
     "order"     INTEGER NOT NULL DEFAULT 1,
     createdAt   TEXT NOT NULL
   );
@@ -271,31 +278,50 @@ export const courses = {
 
 // ─── Lectures ─────────────────────────────────────────────────────────────────
 
+// Migrate existing DB — add columns if they don't exist yet
+try {
+  db.exec('ALTER TABLE lectures ADD COLUMN segments TEXT NOT NULL DEFAULT \'[]\'');
+} catch { /* column already exists */ }
+try {
+  db.exec('ALTER TABLE lectures ADD COLUMN chapters TEXT NOT NULL DEFAULT \'[]\'');
+} catch { /* column already exists */ }
+
+function parseLecture(row: Record<string, unknown>): Lecture {
+  return {
+    ...(row as Omit<Lecture, 'segments' | 'chapters'>),
+    segments: JSON.parse((row.segments as string) || '[]'),
+    chapters: JSON.parse((row.chapters as string) || '[]'),
+  };
+}
+
 export const lectures = {
   getAll(): Lecture[] {
-    return db.prepare('SELECT * FROM lectures ORDER BY "order" ASC').all() as Lecture[];
+    return (db.prepare('SELECT * FROM lectures ORDER BY "order" ASC').all() as Record<string, unknown>[]).map(parseLecture);
   },
   getById(id: string): Lecture | undefined {
-    return db.prepare('SELECT * FROM lectures WHERE id = ?').get(id) as Lecture | undefined;
+    const row = db.prepare('SELECT * FROM lectures WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    return row ? parseLecture(row) : undefined;
   },
   getByCourse(courseId: string): Lecture[] {
-    return db.prepare('SELECT * FROM lectures WHERE courseId = ? ORDER BY "order" ASC').all(courseId) as Lecture[];
+    return (db.prepare('SELECT * FROM lectures WHERE courseId = ? ORDER BY "order" ASC').all(courseId) as Record<string, unknown>[]).map(parseLecture);
   },
   create(data: Omit<Lecture, 'id' | 'createdAt'>): Lecture {
     const id = generateId();
     const createdAt = new Date().toISOString();
     db.prepare(
-      'INSERT INTO lectures (id,courseId,title,description,videoUrl,duration,notes,"order",createdAt) VALUES (?,?,?,?,?,?,?,?,?)'
-    ).run(id, data.courseId, data.title, data.description, data.videoUrl ?? null, data.duration, data.notes, data.order, createdAt);
-    return { ...data, id, createdAt };
+      'INSERT INTO lectures (id,courseId,title,description,videoUrl,duration,notes,segments,chapters,"order",createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
+    ).run(id, data.courseId, data.title, data.description, data.videoUrl ?? null, data.duration, data.notes,
+      JSON.stringify(data.segments ?? []), JSON.stringify(data.chapters ?? []), data.order, createdAt);
+    return { ...data, segments: data.segments ?? [], chapters: data.chapters ?? [], id, createdAt };
   },
   update(id: string, updates: Partial<Lecture>): Lecture | null {
     const existing = lectures.getById(id);
     if (!existing) return null;
     const merged = { ...existing, ...updates };
     db.prepare(
-      'UPDATE lectures SET title=?,description=?,videoUrl=?,duration=?,notes=?,"order"=? WHERE id=?'
-    ).run(merged.title, merged.description, merged.videoUrl ?? null, merged.duration, merged.notes, merged.order, id);
+      'UPDATE lectures SET title=?,description=?,videoUrl=?,duration=?,notes=?,segments=?,chapters=?,"order"=? WHERE id=?'
+    ).run(merged.title, merged.description, merged.videoUrl ?? null, merged.duration, merged.notes,
+      JSON.stringify(merged.segments), JSON.stringify(merged.chapters), merged.order, id);
     return merged;
   },
   delete(id: string): boolean {
