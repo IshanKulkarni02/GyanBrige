@@ -66,6 +66,27 @@ async function gpt(prompt: string, key: string, model: string, maxTokens = 2000)
   return d.choices?.[0]?.message?.content?.trim() ?? '';
 }
 
+/** Safely parse a JSON array from raw GPT output — handles truncated/malformed responses */
+function safeParseArray<T>(raw: string): T[] | null {
+  const match = raw.match(/\[[\s\S]*\]/);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[0]) as T[];
+  } catch {
+    // GPT truncated mid-JSON — attempt to recover by closing unclosed structure
+    try {
+      const partial = match[0]
+        .replace(/,\s*$/, '')              // trailing comma
+        .replace(/\{[^}]*$/, '')           // unclosed last object
+        .replace(/,\s*$/, '')              // trailing comma again
+        + ']';
+      return JSON.parse(partial) as T[];
+    } catch {
+      return null;
+    }
+  }
+}
+
 // ── Operation: generate notes ────────────────────────────────────────────────
 
 async function generateNotes(title: string, transcript: string, key: string, model: string): Promise<string> {
@@ -107,12 +128,12 @@ First chapter at 00:00 titled "Introduction". 3-8 chapters, 2-5 word titles, min
 
 ${lines.join('\n').slice(0, 8000)}
 
-Return ONLY JSON: [{"startSec":0,"title":"Introduction"},...]`,
-    key, model, 300
+Return ONLY a complete JSON array (no markdown, no truncation):
+[{"startSec":0,"title":"Introduction"},{"startSec":120,"title":"Core Concepts"}]`,
+    key, model, 600  // raised from 300 — 8 chapters × ~15 tokens = ~120, keep headroom
   );
-  const match = raw.match(/\[[\s\S]*\]/);
-  if (!match) return [{ startSec: 0, title: 'Introduction' }];
-  const chapters: Chapter[] = JSON.parse(match[0]);
+  const chapters = safeParseArray<Chapter>(raw);
+  if (!chapters?.length) return [{ startSec: 0, title: 'Introduction' }];
   if (!chapters.find(c => c.startSec === 0)) chapters.unshift({ startSec: 0, title: 'Introduction' });
   return chapters.sort((a, b) => a.startSec - b.startSec);
 }
@@ -133,13 +154,11 @@ Rules:
 - Vary difficulty (easy, medium, hard)
 - Include a brief explanation for the correct answer
 
-Return ONLY JSON array:
+Return ONLY a complete JSON array (no markdown, no truncation):
 [{"question":"...","options":["A","B","C","D"],"correctAnswer":0,"explanation":"..."}]`,
-    key, model, Math.min(count * 200, 2000)
+    key, model, Math.min(count * 300, 3000)  // raised per-question budget: 300 tokens each
   );
-  const match = raw.match(/\[[\s\S]*\]/);
-  if (!match) return [];
-  return JSON.parse(match[0]);
+  return safeParseArray(raw) ?? [];
 }
 
 // ── Route handler ────────────────────────────────────────────────────────────

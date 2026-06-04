@@ -77,7 +77,18 @@ Return ONLY valid JSON array, no markdown:
     const match = raw.match(/\[[\s\S]*\]/);
     if (!match) throw new Error('Invalid AI response');
 
-    const questions = JSON.parse(match[0]) as { question: string; options: string[]; correctAnswer: number; explanation: string }[];
+    let questions: { question: string; options: string[]; correctAnswer: number; explanation: string }[];
+    try {
+      questions = JSON.parse(match[0]);
+    } catch {
+      // Try to recover truncated JSON by closing the array
+      try {
+        const fixed = match[0].replace(/,\s*$/, '').replace(/\{[^}]*$/, '').replace(/,\s*$/, '') + ']';
+        questions = JSON.parse(fixed);
+      } catch {
+        return NextResponse.json({ quiz, aiError: 'AI returned malformed JSON — quiz created empty, add questions manually.' });
+      }
+    }
     questions.forEach((q, i) => quizzes.addQuestion(quiz.id, { ...q, order: i + 1 }));
 
     return NextResponse.json({ quiz: quizzes.getById(quiz.id) });

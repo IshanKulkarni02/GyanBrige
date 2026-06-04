@@ -96,7 +96,17 @@ Return ONLY JSON: [{"startSec":0,"title":"Introduction"},...]`;
     const match = raw.match(/\[[\s\S]*\]/);
     if (!match) throw new Error('GPT returned invalid chapter JSON');
 
-    const chapters = JSON.parse(match[0]) as { startSec: number; title: string }[];
+    let chapters: { startSec: number; title: string }[];
+    try {
+      chapters = JSON.parse(match[0]);
+    } catch {
+      try {
+        const fixed = match[0].replace(/,\s*$/, '').replace(/\{[^}]*$/, '').replace(/,\s*$/, '') + ']';
+        chapters = JSON.parse(fixed);
+      } catch {
+        chapters = [{ startSec: 0, title: 'Introduction' }];
+      }
+    }
     if (!chapters.find(c => c.startSec === 0)) chapters.unshift({ startSec: 0, title: 'Introduction' });
 
     return NextResponse.json({ chapters: chapters.sort((a, b) => a.startSec - b.startSec), segments });

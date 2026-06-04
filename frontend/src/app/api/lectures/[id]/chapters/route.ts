@@ -125,7 +125,17 @@ Return ONLY a valid JSON array — no markdown, no explanation:
   const match = raw.match(/\[[\s\S]*\]/);
   if (!match) throw new Error('GPT did not return valid chapter JSON');
 
-  const chapters: Chapter[] = JSON.parse(match[0]);
+  let chapters: Chapter[];
+  try {
+    chapters = JSON.parse(match[0]);
+  } catch {
+    try {
+      const fixed = match[0].replace(/,\s*$/, '').replace(/\{[^}]*$/, '').replace(/,\s*$/, '') + ']';
+      chapters = JSON.parse(fixed);
+    } catch {
+      chapters = [{ startSec: 0, title: 'Introduction' }];
+    }
+  }
   // Ensure first chapter starts at 0
   if (!chapters.find(c => c.startSec === 0)) {
     chapters.unshift({ startSec: 0, title: 'Introduction' });
