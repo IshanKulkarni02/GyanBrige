@@ -31,6 +31,7 @@ export default function UploadLecturePage() {
   const [courseId, setCourseId] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
@@ -159,11 +160,12 @@ export default function UploadLecturePage() {
       }
       setVideoFile(file);
       setError('');
-      // Warn about Whisper 25MB limit for AI notes
       if (file.size > 25 * 1024 * 1024) {
-        setError(
-          `⚠️ File is ${(file.size / 1024 / 1024).toFixed(0)} MB — AI notes from video require files under 25 MB (Whisper API limit). You can still upload the video and write notes manually, or use "Auto-Generate Notes" without a video.`
+        setWarning(
+          `File is ${(file.size / 1024 / 1024).toFixed(0)} MB — AI notes from video require files under 25 MB (Whisper API limit). The video will still upload fine. Use "Auto-Generate Notes" without a video, or write notes manually.`
         );
+      } else {
+        setWarning('');
       }
     }
   };
@@ -420,7 +422,7 @@ export default function UploadLecturePage() {
                   <p className="text-white/50 text-sm">{(videoFile.size / (1024 * 1024)).toFixed(2)} MB</p>
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); setVideoFile(null); }}
+                    onClick={(e) => { e.stopPropagation(); setVideoFile(null); setWarning(''); }}
                     className="text-red-400 text-sm mt-2 hover:text-red-300"
                   >
                     Remove
@@ -443,6 +445,12 @@ export default function UploadLecturePage() {
                   />
                 </div>
                 <p className="text-white/50 text-sm mt-1">Uploading... {uploadProgress}%</p>
+              </div>
+            )}
+            {warning && (
+              <div className="mt-2 bg-amber-500/15 border border-amber-500/30 rounded-lg p-3 text-amber-300 text-sm flex gap-2">
+                <span className="shrink-0">⚠️</span>
+                <span>{warning}</span>
               </div>
             )}
           </div>
