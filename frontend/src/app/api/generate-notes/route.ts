@@ -7,7 +7,7 @@ import { promisify } from 'util';
 import { tmpdir } from 'os';
 import path from 'path';
 import { Readable } from 'stream';
-import { logRoute } from '@/lib/logger';
+import { logRoute, withRetry } from '@/lib/logger';
 
 export const maxDuration = 3600;
 
@@ -69,18 +69,18 @@ async function transcribeChunk(blob: Blob, filename: string, openaiKey: string, 
   // handle code-switching between Hindi/Marathi/English naturally
   if (language && language !== 'auto') formData.append('language', language);
 
-  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${openaiKey}` },
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Whisper API error ${response.status}`);
-  }
-
-  return response.text();
+  return withRetry(async () => {
+    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${openaiKey}` },
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `Whisper API error ${response.status}`);
+    }
+    return response.text();
+  }, 3, 3000, `Whisper chunk ${filename}`);
 }
 
 /**

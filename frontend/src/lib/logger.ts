@@ -40,6 +40,36 @@ export const logger = {
   },
 };
 
+// ── Retry helper ────────────────────────────────────────────────────────────
+/**
+ * Retry an async function up to `attempts` times on transient network errors
+ * (TypeError: fetch failed, ECONNRESET, ETIMEDOUT, etc.).
+ * API-level errors (4xx/5xx) are NOT retried — only network-level throws.
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  attempts = 3,
+  delayMs = 2000,
+  label = 'operation'
+): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isNetwork = msg.includes('fetch failed') || msg.includes('ECONNRESET') ||
+                        msg.includes('ETIMEDOUT') || msg.includes('ENOTFOUND') ||
+                        msg.includes('network') || msg.includes('socket');
+      if (!isNetwork) throw err; // API error — don't retry
+      lastErr = err;
+      logger.error(`${label} failed (attempt ${i + 1}/${attempts}), retrying in ${delayMs}ms`, { error: msg });
+      if (i < attempts - 1) await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+  throw lastErr;
+}
+
 // ── Route wrapper ────────────────────────────────────────────────────────────
 // Wraps any Next.js route handler to log:
 //   → request  (method, path, user)
