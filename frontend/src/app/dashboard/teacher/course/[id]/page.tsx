@@ -1,15 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { authFetch } from '@/lib/api';
 import { toast } from 'sonner';
 
-interface Lecture  { id: string; title: string; description: string; duration: number; order: number; videoUrl?: string; notes: string; }
+interface Lecture  { id: string; title: string; description: string; duration: number; order: number; videoUrl?: string; notes: string; chapters?: {startSec:number;title:string}[]; }
 interface Student  { id: string; name: string; email: string; progress: number; completedLectures: string[]; }
 interface Course   { id: string; name: string; description: string; icon: string; color: string; }
 interface UserData { id: string; name: string; role: string; }
+interface Quiz     { id: string; title: string; questions?: {id:string}[]; }
 
 export default function TeacherCoursePage() {
   const router   = useRouter();
@@ -22,9 +23,22 @@ export default function TeacherCoursePage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [tab,      setTab]      = useState<'lectures' | 'students'>('lectures');
-
-  // Delete confirm
   const [deleting, setDeleting] = useState<string | null>(null);
+
+  // Notes editor state
+  const [editingLecture, setEditingLecture] = useState<Lecture | null>(null);
+  const [editedNotes,    setEditedNotes]    = useState('');
+  const [savingNotes,    setSavingNotes]    = useState(false);
+  const [regenNotes,     setRegenNotes]     = useState(false);
+
+  // Quiz state
+  const [quizModal,      setQuizModal]      = useState<string | null>(null); // lectureId
+  const [quizTitle,      setQuizTitle]      = useState('');
+  const [quizCount,      setQuizCount]      = useState(5);
+  const [creatingQuiz,   setCreatingQuiz]   = useState(false);
+  const [lectureQuizzes, setLectureQuizzes] = useState<Record<string, Quiz[]>>({});
+
+  const notesRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -42,16 +56,26 @@ export default function TeacherCoursePage() {
         authFetch(`/api/lectures?courseId=${courseId}`),
         authFetch(`/api/enrollments?courseId=${courseId}`),
       ]);
-      const { course }       = await courseRes.json();
-      const { lectures }     = await lecturesRes.json();
-      const { enrollments }  = await enrollmentsRes.json();
+      const { course }      = await courseRes.json();
+      const { lectures }    = await lecturesRes.json();
+      const { enrollments } = await enrollmentsRes.json();
 
       setCourse(course);
-      setLectures(lectures ?? []);
-      setStudents((enrollments ?? []).map((e: { userId: string; userName: string; userEmail: string; progress: number; completedLectures: string[] }) => ({
+      const lecs = lectures ?? [];
+      setLectures(lecs);
+      setStudents((enrollments ?? []).map((e: { userId:string; userName:string; userEmail:string; progress:number; completedLectures:string[] }) => ({
         id: e.userId, name: e.userName, email: e.userEmail,
         progress: e.progress, completedLectures: e.completedLectures,
       })));
+
+      // Load quizzes for each lecture
+      const quizMap: Record<string, Quiz[]> = {};
+      await Promise.all(lecs.map(async (l: Lecture) => {
+        const r = await authFetch(`/api/quizzes?lectureId=${l.id}`);
+        const d = await r.json();
+        quizMap[l.id] = d.quizzes ?? [];
+      }));
+      setLectureQuizzes(quizMap);
     } catch { toast.error('Failed to load course'); }
     finally  { setLoading(false); }
   };
@@ -64,9 +88,79 @@ export default function TeacherCoursePage() {
       if (!res.ok) throw new Error((await res.json()).error);
       setLectures(prev => prev.filter(l => l.id !== id));
       toast.success('Lecture deleted');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Delete failed');
-    } finally { setDeleting(null); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Delete failed'); }
+    finally { setDeleting(null); }
+  };
+
+  // ── Notes editor ────────────────────────────────────────────────────────────
+
+  const openNotesEditor = (lec: Lecture) => {
+    setEditingLecture(lec);
+    setEditedNotes(lec.notes || '');
+    setTimeout(() => notesRef.current?.focus(), 100);
+  };
+
+  const saveNotes = async () => {
+    if (!editingLecture) return;
+    setSavingNotes(true);
+    try {
+      const res = await authFetch(`/api/lectures/${editingLecture.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ notes: editedNotes }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      setLectures(prev => prev.map(l => l.id === editingLecture.id ? { ...l, notes: editedNotes } : l));
+      setEditingLecture(null);
+      toast.success('Notes saved');
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Save failed'); }
+    finally { setSavingNotes(false); }
+  };
+
+  const regenerateNotes = async () => {
+    if (!editingLecture) return;
+    setRegenNotes(true);
+    try {
+      const res = await authFetch('/api/generate-notes', {
+        method: 'POST',
+        body: JSON.stringify({ title: editingLecture.title, description: editingLecture.description }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error);
+      setEditedNotes(data.notes);
+      toast.success('Notes regenerated — review and save');
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Regeneration failed'); }
+    finally { setRegenNotes(false); }
+  };
+
+  // ── Quiz builder ─────────────────────────────────────────────────────────────
+
+  const openQuizModal = (lectureId: string, lectureTitle: string) => {
+    setQuizModal(lectureId);
+    setQuizTitle(`Quiz: ${lectureTitle}`);
+    setQuizCount(5);
+  };
+
+  const createQuiz = async (generateAI: boolean) => {
+    if (!quizModal || !quizTitle.trim()) return;
+    setCreatingQuiz(true);
+    try {
+      const res = await authFetch('/api/quizzes', {
+        method: 'POST',
+        body: JSON.stringify({ lectureId: quizModal, courseId, title: quizTitle, generateAI, questionCount: quizCount }),
+      });
+      const data = await res.json();
+      if (!res.ok && !data.quiz) throw new Error(data.error);
+      if (data.aiError) toast.warning(`Quiz created but AI failed: ${data.aiError}. Add questions manually.`);
+      else if (generateAI) toast.success(`Quiz created with ${data.quiz.questions?.length ?? 0} AI questions!`);
+      else toast.success('Quiz created — add questions manually');
+
+      setLectureQuizzes(prev => ({ ...prev, [quizModal]: [...(prev[quizModal] ?? []), data.quiz] }));
+      setQuizModal(null);
+
+      // Navigate to quiz builder
+      router.push(`/dashboard/teacher/quiz/${data.quiz.id}`);
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to create quiz'); }
+    finally { setCreatingQuiz(false); }
   };
 
   if (loading || !user) return (
@@ -74,48 +168,35 @@ export default function TeacherCoursePage() {
       <div className="text-center"><div className="text-4xl mb-4 animate-pulse">📚</div><p className="text-white/60">Loading...</p></div>
     </div>
   );
-
   if (!course) return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="text-center">
-        <div className="text-4xl mb-4">❌</div>
-        <p className="text-white/60">Course not found</p>
+        <div className="text-4xl mb-4">❌</div><p className="text-white/60">Course not found</p>
         <Link href="/dashboard/teacher" className="text-emerald-400 mt-4 inline-block">← Dashboard</Link>
       </div>
     </div>
   );
 
-  const avgProgress = students.length
-    ? Math.round(students.reduce((s, st) => s + st.progress, 0) / students.length)
-    : 0;
+  const avgProgress = students.length ? Math.round(students.reduce((s, st) => s + st.progress, 0) / students.length) : 0;
 
   return (
     <div className="min-h-screen p-6 lg:p-8">
-      {/* Back */}
-      <Link href="/dashboard/teacher" className="inline-flex items-center gap-2 text-white/60 hover:text-white mb-6 transition">
-        ← Dashboard
-      </Link>
+      <Link href="/dashboard/teacher" className="inline-flex items-center gap-2 text-white/60 hover:text-white mb-6 transition">← Dashboard</Link>
 
       {/* Course header */}
       <div className="glass rounded-2xl p-6 mb-6">
         <div className="flex items-start gap-5">
-          <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${course.color} flex items-center justify-center text-3xl shrink-0`}>
-            {course.icon}
-          </div>
+          <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${course.color} flex items-center justify-center text-3xl shrink-0`}>{course.icon}</div>
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-bold mb-1">{course.name}</h1>
             <p className="text-white/60">{course.description}</p>
           </div>
-          <Link href={`/dashboard/teacher/upload?courseId=${courseId}`} className="btn-primary px-4 py-2 text-sm shrink-0">
-            + Add Lecture
-          </Link>
+          <Link href={`/dashboard/teacher/upload`} className="btn-primary px-4 py-2 text-sm shrink-0">+ Add Lecture</Link>
         </div>
-
-        {/* Stats row */}
         <div className="grid grid-cols-3 gap-4 mt-6">
           {[
-            { label: 'Lectures',  value: lectures.length,  icon: '🎬' },
-            { label: 'Students',  value: students.length,  icon: '🎓' },
+            { label: 'Lectures',     value: lectures.length, icon: '🎬' },
+            { label: 'Students',     value: students.length, icon: '🎓' },
             { label: 'Avg progress', value: `${avgProgress}%`, icon: '📊' },
           ].map(s => (
             <div key={s.label} className="bg-white/5 rounded-xl p-4 text-center">
@@ -144,35 +225,51 @@ export default function TeacherCoursePage() {
             <div className="glass rounded-2xl p-10 text-center">
               <span className="text-4xl block mb-3">🎬</span>
               <p className="text-white/50 mb-4">No lectures yet</p>
-              <Link href={`/dashboard/teacher/upload?courseId=${courseId}`} className="btn-primary px-6 py-3">
-                Upload First Lecture
-              </Link>
+              <Link href="/dashboard/teacher/upload" className="btn-primary px-6 py-3">Upload First Lecture</Link>
             </div>
           ) : (
-            <div className="glass rounded-2xl overflow-hidden">
-              {lectures.map((lec, i) => (
-                <div key={lec.id} className={`flex items-center gap-4 p-4 hover:bg-white/5 transition ${i !== lectures.length - 1 ? 'border-b border-white/10' : ''}`}>
-                  <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white/50 text-sm shrink-0">
-                    {lec.order}
+            <div className="space-y-3">
+              {lectures.map((lec) => {
+                const quizList = lectureQuizzes[lec.id] ?? [];
+                return (
+                  <div key={lec.id} className="glass rounded-xl p-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white/50 text-sm shrink-0">{lec.order}</div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium truncate">{lec.title}</h4>
+                        <p className="text-white/40 text-xs mt-0.5">
+                          {lec.duration} min
+                          {lec.videoUrl && <span className="ml-2 text-emerald-400">● Video</span>}
+                          {lec.notes    && <span className="ml-2 text-purple-400">● Notes</span>}
+                          {lec.chapters?.length ? <span className="ml-2 text-blue-400">● {lec.chapters.length} chapters</span> : null}
+                          {quizList.length > 0 && <span className="ml-2 text-amber-400">● {quizList.length} quiz{quizList.length > 1 ? 'zes' : ''}</span>}
+                        </p>
+                      </div>
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => openNotesEditor(lec)}
+                          className="px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 transition text-xs">
+                          ✏️ Notes
+                        </button>
+                        <button onClick={() => openQuizModal(lec.id, lec.title)}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition text-xs">
+                          🧠 Quiz
+                        </button>
+                        {quizList.map(q => (
+                          <Link key={q.id} href={`/dashboard/teacher/quiz/${q.id}`}
+                            className="px-2 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition text-xs">
+                            {q.title}
+                          </Link>
+                        ))}
+                        <button onClick={() => deleteLecture(lec.id)} disabled={deleting === lec.id}
+                          className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-500/10 transition disabled:opacity-50">
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium truncate">{lec.title}</h4>
-                    <p className="text-white/40 text-xs">
-                      {lec.duration} min
-                      {lec.videoUrl && <span className="ml-2 text-emerald-400">● Video</span>}
-                      {lec.notes    && <span className="ml-2 text-purple-400">● Notes</span>}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => deleteLecture(lec.id)}
-                    disabled={deleting === lec.id}
-                    className="p-2 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-500/10 transition disabled:opacity-50"
-                    title="Delete lecture"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -182,26 +279,17 @@ export default function TeacherCoursePage() {
       {tab === 'students' && (
         <div>
           {students.length === 0 ? (
-            <div className="glass rounded-2xl p-10 text-center">
-              <span className="text-4xl block mb-3">🎓</span>
-              <p className="text-white/50">No students enrolled yet</p>
-            </div>
+            <div className="glass rounded-2xl p-10 text-center"><span className="text-4xl block mb-3">🎓</span><p className="text-white/50">No students enrolled yet</p></div>
           ) : (
             <div className="glass rounded-2xl overflow-hidden">
               {students.map((st, i) => (
                 <div key={st.id} className={`flex items-center gap-4 p-4 ${i !== students.length - 1 ? 'border-b border-white/10' : ''}`}>
-                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
-                    <span>🎓</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium">{st.name}</p>
-                    <p className="text-white/40 text-xs">{st.email}</p>
-                  </div>
+                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0"><span>🎓</span></div>
+                  <div className="flex-1 min-w-0"><p className="font-medium">{st.name}</p><p className="text-white/40 text-xs">{st.email}</p></div>
                   <div className="text-right shrink-0">
                     <p className={`text-sm font-bold ${st.progress === 100 ? 'text-emerald-400' : 'text-white'}`}>{st.progress}%</p>
                     <p className="text-white/30 text-xs">{st.completedLectures.length}/{lectures.length} lectures</p>
                   </div>
-                  {/* Mini progress bar */}
                   <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden shrink-0">
                     <div className={`h-full bg-gradient-to-r ${course.color}`} style={{ width: `${st.progress}%` }} />
                   </div>
@@ -209,6 +297,79 @@ export default function TeacherCoursePage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Notes editor modal ─────────────────────────────────────────────── */}
+      {editingLecture && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setEditingLecture(null)}>
+          <div className="w-full max-w-2xl glass rounded-2xl p-6 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4 shrink-0">
+              <h2 className="text-lg font-semibold">✏️ {editingLecture.title} — Notes</h2>
+              <button onClick={() => setEditingLecture(null)} className="text-white/40 hover:text-white text-xl">✕</button>
+            </div>
+
+            <div className="flex gap-2 mb-3 shrink-0">
+              <button onClick={regenerateNotes} disabled={regenNotes}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 disabled:opacity-50 transition text-sm">
+                {regenNotes ? <><span className="animate-spin">⚙️</span> Regenerating…</> : '🤖 Regenerate AI Notes'}
+              </button>
+              <span className="text-white/30 text-xs self-center">from title &amp; description</span>
+            </div>
+
+            <textarea
+              ref={notesRef}
+              value={editedNotes}
+              onChange={e => setEditedNotes(e.target.value)}
+              className="input-glass flex-1 min-h-[300px] font-mono text-sm resize-none"
+              placeholder="# Topic 1&#10;&#10;- Key point&#10;- Key point"
+            />
+
+            <div className="flex gap-3 mt-4 shrink-0">
+              <button onClick={saveNotes} disabled={savingNotes}
+                className="btn-primary flex-1 py-3 disabled:opacity-50">
+                {savingNotes ? '⏳ Saving…' : '💾 Save Notes'}
+              </button>
+              <button onClick={() => setEditingLecture(null)} className="glass px-6 py-3 rounded-xl hover:bg-white/10 transition">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Quiz creation modal ────────────────────────────────────────────── */}
+      {quizModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setQuizModal(null)}>
+          <div className="w-full max-w-md glass rounded-2xl p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-semibold">🧠 Create Quiz</h2>
+              <button onClick={() => setQuizModal(null)} className="text-white/40 hover:text-white text-xl">✕</button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-white/70 mb-1">Quiz Title</label>
+                <input value={quizTitle} onChange={e => setQuizTitle(e.target.value)} className="input-glass" />
+              </div>
+              <div>
+                <label className="block text-sm text-white/70 mb-1">Number of AI Questions</label>
+                <select value={quizCount} onChange={e => setQuizCount(Number(e.target.value))} className="input-glass">
+                  {[3,5,8,10,15].map(n => <option key={n} value={n}>{n} questions</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mt-6">
+              <button onClick={() => createQuiz(false)} disabled={creatingQuiz || !quizTitle.trim()}
+                className="glass py-3 rounded-xl hover:bg-white/10 transition disabled:opacity-50 text-sm">
+                ✍️ Manual
+                <p className="text-white/40 text-xs mt-0.5">Add questions yourself</p>
+              </button>
+              <button onClick={() => createQuiz(true)} disabled={creatingQuiz || !quizTitle.trim()}
+                className="btn-primary py-3 disabled:opacity-50 text-sm">
+                {creatingQuiz ? <><span className="animate-spin block">⚙️</span></> : <>🤖 AI Generate<p className="text-white/70 text-xs mt-0.5">{quizCount} questions</p></>}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

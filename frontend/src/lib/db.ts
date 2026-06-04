@@ -154,6 +154,24 @@ db.exec(`
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS quizzes (
+    id        TEXT PRIMARY KEY,
+    lectureId TEXT NOT NULL REFERENCES lectures(id) ON DELETE CASCADE,
+    courseId  TEXT NOT NULL REFERENCES courses(id)  ON DELETE CASCADE,
+    title     TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS quiz_questions (
+    id            TEXT PRIMARY KEY,
+    quizId        TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    question      TEXT NOT NULL,
+    options       TEXT NOT NULL DEFAULT '[]',
+    correctAnswer INTEGER NOT NULL DEFAULT 0,
+    explanation   TEXT NOT NULL DEFAULT '',
+    "order"       INTEGER NOT NULL DEFAULT 1
+  );
 `);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -488,4 +506,47 @@ export const settings = {
   },
 };
 
-export default { users, courses, lectures, enrollments, attendance, invites, settings };
+// ─── Quizzes ──────────────────────────────────────────────────────────────────
+
+export interface QuizQuestion {
+  id: string; quizId: string; question: string;
+  options: string[]; correctAnswer: number; explanation: string; order: number;
+}
+export interface Quiz {
+  id: string; lectureId: string; courseId: string; title: string; createdAt: string;
+  questions?: QuizQuestion[];
+}
+
+function parseQuestion(row: Record<string, unknown>): QuizQuestion {
+  return { ...(row as QuizQuestion), options: JSON.parse((row.options as string) || '[]') };
+}
+
+export const quizzes = {
+  getByLecture(lectureId: string): Quiz[] {
+    return db.prepare('SELECT * FROM quizzes WHERE lectureId=? ORDER BY createdAt DESC').all(lectureId) as Quiz[];
+  },
+  getById(id: string): Quiz | undefined {
+    const quiz = db.prepare('SELECT * FROM quizzes WHERE id=?').get(id) as Quiz | undefined;
+    if (!quiz) return undefined;
+    quiz.questions = (db.prepare('SELECT * FROM quiz_questions WHERE quizId=? ORDER BY "order" ASC').all(id) as Record<string, unknown>[]).map(parseQuestion);
+    return quiz;
+  },
+  create(data: Omit<Quiz, 'id' | 'createdAt'>): Quiz {
+    const id = generateId(); const createdAt = new Date().toISOString();
+    db.prepare('INSERT INTO quizzes (id,lectureId,courseId,title,createdAt) VALUES (?,?,?,?,?)').run(id, data.lectureId, data.courseId, data.title, createdAt);
+    return { ...data, id, createdAt, questions: [] };
+  },
+  addQuestion(quizId: string, data: Omit<QuizQuestion, 'id' | 'quizId'>): QuizQuestion {
+    const id = generateId();
+    db.prepare('INSERT INTO quiz_questions (id,quizId,question,options,correctAnswer,explanation,"order") VALUES (?,?,?,?,?,?,?)').run(id, quizId, data.question, JSON.stringify(data.options), data.correctAnswer, data.explanation || '', data.order);
+    return { ...data, id, quizId };
+  },
+  deleteQuestion(id: string): boolean {
+    return db.prepare('DELETE FROM quiz_questions WHERE id=?').run(id).changes > 0;
+  },
+  delete(id: string): boolean {
+    return db.prepare('DELETE FROM quizzes WHERE id=?').run(id).changes > 0;
+  },
+};
+
+export default { users, courses, lectures, enrollments, attendance, invites, settings, quizzes };

@@ -203,7 +203,7 @@ export default function RecordLecturePage() {
         method: 'POST',
         body: JSON.stringify({
           title,
-          description: `Recorded ${recordingType} lecture`,
+          description: `${recordingType === 'video' ? '🎥' : '🎤'} Live recorded lecture`,
           courseId,
           duration: Math.ceil(recordingTime / 60),
           notes,
@@ -212,6 +212,21 @@ export default function RecordLecturePage() {
       });
 
       if (!lectureRes.ok) throw new Error('Failed to create lecture');
+      const { lecture: savedLecture } = await lectureRes.json();
+
+      // Auto-generate notes in the background from the recording
+      authFetch('/api/generate-notes', {
+        method: 'POST',
+        body: JSON.stringify({ title, description: `Live recorded lecture` }),
+      }).then(async r => {
+        const d = await r.json();
+        if (d.notes && savedLecture?.id) {
+          await authFetch(`/api/lectures/${savedLecture.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ notes: d.notes }),
+          });
+        }
+      }).catch(() => {});  // silent — notes can be regenerated from course page
 
       setSuccess(true);
       setTimeout(() => router.push('/dashboard/teacher'), 2000);
