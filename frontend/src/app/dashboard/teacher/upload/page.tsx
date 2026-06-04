@@ -225,35 +225,50 @@ export default function UploadLecturePage() {
       }
     };
 
-    const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB — fast throughput, well under any body-parser limit
+    const CHUNK_SIZE   = 10 * 1024 * 1024; // 10 MB per chunk
+    const PARALLELISM  = 4;               // chunks in-flight at once
 
     try {
       if (fileSize > 10 * 1024 * 1024) { // always chunk files > 10 MB
         const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
-        const uploadId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
-        let bytesUploadedSoFar = 0;
-        let finalUrl = '';
+        const uploadId    = `${Date.now()}-${Math.random().toString(36).substring(2)}`;
 
-        for (let i = 0; i < totalChunks; i++) {
+        // Track bytes uploaded per chunk slot for smooth progress
+        const chunkUploaded = new Array<number>(totalChunks).fill(0);
+        const getTotal = () => chunkUploaded.reduce((a, b) => a + b, 0);
+
+        // Upload one chunk, updating its progress slot
+        const uploadChunk = (i: number): Promise<Record<string, unknown>> => {
           const start = i * CHUNK_SIZE;
-          const end = Math.min(start + CHUNK_SIZE, fileSize);
+          const end   = Math.min(start + CHUNK_SIZE, fileSize);
           const chunk = videoFile.slice(start, end);
-          const chunkSize = end - start;
 
-          const formData = new FormData();
-          formData.append('chunk', chunk);
-          formData.append('chunkIndex', String(i));
-          formData.append('totalChunks', String(totalChunks));
-          formData.append('uploadId', uploadId);
-          formData.append('originalName', videoFile.name);
+          const fd = new FormData();
+          fd.append('chunk', chunk);
+          fd.append('chunkIndex', String(i));
+          fd.append('totalChunks', String(totalChunks));
+          fd.append('uploadId', uploadId);
+          fd.append('originalName', videoFile.name);
 
-          const data = await xhrPost('/api/upload', formData, (loaded) => {
-            updateProgress(bytesUploadedSoFar + loaded);
-          });
+          return xhrPost('/api/upload', fd, (loaded) => {
+            chunkUploaded[i] = loaded;
+            updateProgress(getTotal());
+          }).then(data => { chunkUploaded[i] = end - start; return data; });
+        };
 
-          bytesUploadedSoFar += chunkSize;
-          if (data.complete && data.url) finalUrl = data.url as string;
-        }
+        // Run with limited concurrency
+        let finalUrl = '';
+        let next = 0;
+
+        const worker = async () => {
+          while (next < totalChunks) {
+            const i = next++;
+            const data = await uploadChunk(i);
+            if (data.complete && data.url) finalUrl = data.url as string;
+          }
+        };
+
+        await Promise.all(Array.from({ length: PARALLELISM }, worker));
 
         setUploadPhase('finalizing');
         setUploadProgress(100);
