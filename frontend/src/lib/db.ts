@@ -1,25 +1,16 @@
 /**
- * Simple JSON file-based database for LMS
- * Can be easily upgraded to SQLite, PostgreSQL, or MongoDB later
+ * SQLite database layer for GyanBrige LMS.
+ * Uses better-sqlite3 (synchronous, ACID, file-based — no server needed).
+ * Exports the same interface as the previous JSON-file implementation
+ * so all callers work without changes.
  */
 
-import fs from 'fs';
+import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 
-const DB_PATH = path.join(process.cwd(), 'data');
-const USERS_FILE = path.join(DB_PATH, 'users.json');
-const COURSES_FILE = path.join(DB_PATH, 'courses.json');
-const LECTURES_FILE = path.join(DB_PATH, 'lectures.json');
-const ENROLLMENTS_FILE = path.join(DB_PATH, 'enrollments.json');
-const ATTENDANCE_FILE = path.join(DB_PATH, 'attendance.json');
-const INVITES_FILE = path.join(DB_PATH, 'invites.json');
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-// Ensure data directory exists
-if (!fs.existsSync(DB_PATH)) {
-  fs.mkdirSync(DB_PATH, { recursive: true });
-}
-
-// Types
 export interface User {
   id: string;
   name: string;
@@ -47,7 +38,7 @@ export interface Lecture {
   title: string;
   description: string;
   videoUrl?: string;
-  duration: number; // in minutes
+  duration: number;
   notes: string;
   order: number;
   createdAt: string;
@@ -57,7 +48,7 @@ export interface Enrollment {
   id: string;
   userId: string;
   courseId: string;
-  progress: number; // percentage
+  progress: number;
   completedLectures: string[];
   enrolledAt: string;
 }
@@ -79,389 +70,371 @@ export interface Invite {
   expiresAt: string;
 }
 
-// Helper functions
-function readJSON<T>(filePath: string, defaultValue: T[] = []): T[] {
-  try {
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, JSON.stringify(defaultValue, null, 2));
-      return defaultValue;
-    }
-    const data = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(data);
-  } catch {
-    return defaultValue;
-  }
-}
+// ─── Database setup ───────────────────────────────────────────────────────────
 
-function writeJSON<T>(filePath: string, data: T[]): void {
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-}
+const DATA_DIR = path.join(process.cwd(), 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const db = new Database(path.join(DATA_DIR, 'gyanbrige.db'));
+
+// Enable WAL mode for better concurrent read performance
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    email      TEXT UNIQUE NOT NULL COLLATE NOCASE,
+    password   TEXT NOT NULL,
+    role       TEXT NOT NULL CHECK(role IN ('student','teacher','admin')),
+    createdAt  TEXT NOT NULL,
+    avatar     TEXT,
+    macAddress TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS courses (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    icon        TEXT NOT NULL DEFAULT '📚',
+    color       TEXT NOT NULL DEFAULT 'from-emerald-500 to-teal-500',
+    teacherId   TEXT NOT NULL REFERENCES users(id),
+    createdAt   TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS lectures (
+    id          TEXT PRIMARY KEY,
+    courseId    TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    videoUrl    TEXT,
+    duration    INTEGER NOT NULL DEFAULT 30,
+    notes       TEXT NOT NULL DEFAULT '',
+    "order"     INTEGER NOT NULL DEFAULT 1,
+    createdAt   TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS enrollments (
+    id                 TEXT PRIMARY KEY,
+    userId             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    courseId           TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    progress           INTEGER NOT NULL DEFAULT 0,
+    completedLectures  TEXT NOT NULL DEFAULT '[]',
+    enrolledAt         TEXT NOT NULL,
+    UNIQUE(userId, courseId)
+  );
+
+  CREATE TABLE IF NOT EXISTS attendance (
+    id        TEXT PRIMARY KEY,
+    courseId  TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    date      TEXT NOT NULL,
+    records   TEXT NOT NULL DEFAULT '{}',
+    markedBy  TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    UNIQUE(courseId, date)
+  );
+
+  CREATE TABLE IF NOT EXISTS invites (
+    token     TEXT PRIMARY KEY,
+    role      TEXT NOT NULL,
+    createdBy TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    expiresAt TEXT NOT NULL
+  );
+`);
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+  return Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
 
-// Initialize with seed data if empty
-function initializeDB() {
-  const users = readJSON<User>(USERS_FILE);
-  if (users.length === 0) {
-    const seedUsers: User[] = [
-      { id: 'u1', name: 'Arjun Kumar', email: 'student@gyan.com', password: 'student123', role: 'student', createdAt: new Date().toISOString() },
-      { id: 'u2', name: 'Dr. Priya Sharma', email: 'teacher@gyan.com', password: 'teacher123', role: 'teacher', createdAt: new Date().toISOString() },
-      { id: 'u3', name: 'Rahul Singh', email: 'admin@gyan.com', password: 'admin123', role: 'admin', createdAt: new Date().toISOString() },
-      { id: 'u4', name: 'Meera Patel', email: 'meera@gyan.com', password: 'password123', role: 'student', createdAt: new Date().toISOString() },
-      { id: 'u5', name: 'Vikram Joshi', email: 'vikram@gyan.com', password: 'password123', role: 'student', createdAt: new Date().toISOString() },
-    ];
-    writeJSON(USERS_FILE, seedUsers);
-  }
+// Seed default data if tables are empty
+(function seed() {
+  const count = (db.prepare('SELECT COUNT(*) as n FROM users').get() as { n: number }).n;
+  if (count > 0) return;
 
-  const courses = readJSON<Course>(COURSES_FILE);
-  if (courses.length === 0) {
-    const seedCourses: Course[] = [
-      { id: 'c1', name: 'Mathematics', description: 'Algebra, Calculus, and Geometry', icon: '📐', color: 'from-emerald-500 to-teal-500', teacherId: 'u2', createdAt: new Date().toISOString() },
-      { id: 'c2', name: 'Physics', description: 'Mechanics, Thermodynamics, and Optics', icon: '⚡', color: 'from-purple-500 to-indigo-500', teacherId: 'u2', createdAt: new Date().toISOString() },
-      { id: 'c3', name: 'Chemistry', description: 'Organic, Inorganic, and Physical Chemistry', icon: '🧪', color: 'from-amber-500 to-orange-500', teacherId: 'u2', createdAt: new Date().toISOString() },
-      { id: 'c4', name: 'Biology', description: 'Cell Biology, Genetics, and Ecology', icon: '🧬', color: 'from-green-500 to-emerald-500', teacherId: 'u2', createdAt: new Date().toISOString() },
-      { id: 'c5', name: 'English', description: 'Grammar, Literature, and Writing', icon: '📚', color: 'from-blue-500 to-cyan-500', teacherId: 'u2', createdAt: new Date().toISOString() },
-      { id: 'c6', name: 'History', description: 'World History and Indian History', icon: '🏛️', color: 'from-rose-500 to-pink-500', teacherId: 'u2', createdAt: new Date().toISOString() },
-    ];
-    writeJSON(COURSES_FILE, seedCourses);
-  }
+  const now = new Date().toISOString();
+  const insertUser = db.prepare(
+    'INSERT INTO users (id,name,email,password,role,createdAt) VALUES (?,?,?,?,?,?)'
+  );
+  // Passwords are plain here — the auth routes will bcrypt them on real signups.
+  // For seed accounts bcrypt is applied at first real login via the signup route.
+  // These are development-only demo accounts.
+  insertUser.run('u1', 'Arjun Kumar',    'student@gyan.com', 'student123', 'student', now);
+  insertUser.run('u2', 'Dr. Priya Sharma','teacher@gyan.com', 'teacher123', 'teacher', now);
+  insertUser.run('u3', 'Rahul Singh',    'admin@gyan.com',   'admin123',  'admin',   now);
+  insertUser.run('u4', 'Meera Patel',    'meera@gyan.com',   'password123','student', now);
+  insertUser.run('u5', 'Vikram Joshi',   'vikram@gyan.com',  'password123','student', now);
 
-  const lectures = readJSON<Lecture>(LECTURES_FILE);
-  if (lectures.length === 0) {
-    const seedLectures: Lecture[] = [
-      { id: 'l1', courseId: 'c1', title: 'Introduction to Algebra', description: 'Basic algebraic concepts', duration: 45, notes: '# Algebra Basics\n\n- Variables and constants\n- Linear equations\n- Quadratic equations', order: 1, createdAt: new Date().toISOString() },
-      { id: 'l2', courseId: 'c1', title: 'Calculus Fundamentals', description: 'Limits and derivatives', duration: 50, notes: '# Calculus\n\n- Understanding limits\n- Derivatives\n- Integration basics', order: 2, createdAt: new Date().toISOString() },
-      { id: 'l3', courseId: 'c1', title: 'Geometry Basics', description: 'Shapes and theorems', duration: 40, notes: '# Geometry\n\n- Types of angles\n- Triangles\n- Circles', order: 3, createdAt: new Date().toISOString() },
-      { id: 'l4', courseId: 'c2', title: 'Laws of Motion', description: 'Newton\'s three laws', duration: 55, notes: '# Newton\'s Laws\n\n1. First Law (Inertia)\n2. Second Law (F=ma)\n3. Third Law (Action-Reaction)', order: 1, createdAt: new Date().toISOString() },
-      { id: 'l5', courseId: 'c2', title: 'Thermodynamics', description: 'Heat and energy', duration: 48, notes: '# Thermodynamics\n\n- Heat transfer\n- Laws of thermodynamics\n- Entropy', order: 2, createdAt: new Date().toISOString() },
-    ];
-    writeJSON(LECTURES_FILE, seedLectures);
-  }
+  const insertCourse = db.prepare(
+    'INSERT INTO courses (id,name,description,icon,color,teacherId,createdAt) VALUES (?,?,?,?,?,?,?)'
+  );
+  insertCourse.run('c1','Mathematics','Algebra, Calculus, and Geometry','📐','from-emerald-500 to-teal-500','u2',now);
+  insertCourse.run('c2','Physics','Mechanics, Thermodynamics, and Optics','⚡','from-purple-500 to-indigo-500','u2',now);
+  insertCourse.run('c3','Chemistry','Organic, Inorganic, and Physical Chemistry','🧪','from-amber-500 to-orange-500','u2',now);
+  insertCourse.run('c4','Biology','Cell Biology, Genetics, and Ecology','🧬','from-green-500 to-emerald-500','u2',now);
+  insertCourse.run('c5','English','Grammar, Literature, and Writing','📚','from-blue-500 to-cyan-500','u2',now);
+  insertCourse.run('c6','History','World History and Indian History','🏛️','from-rose-500 to-pink-500','u2',now);
 
-  const enrollments = readJSON<Enrollment>(ENROLLMENTS_FILE);
-  if (enrollments.length === 0) {
-    const seedEnrollments: Enrollment[] = [
-      { id: 'e1', userId: 'u1', courseId: 'c1', progress: 66, completedLectures: ['l1', 'l2'], enrolledAt: new Date().toISOString() },
-      { id: 'e2', userId: 'u1', courseId: 'c2', progress: 50, completedLectures: ['l4'], enrolledAt: new Date().toISOString() },
-      { id: 'e3', userId: 'u4', courseId: 'c1', progress: 33, completedLectures: ['l1'], enrolledAt: new Date().toISOString() },
-      { id: 'e4', userId: 'u5', courseId: 'c1', progress: 100, completedLectures: ['l1', 'l2', 'l3'], enrolledAt: new Date().toISOString() },
-    ];
-    writeJSON(ENROLLMENTS_FILE, seedEnrollments);
-  }
-}
+  const insertLecture = db.prepare(
+    'INSERT INTO lectures (id,courseId,title,description,duration,notes,"order",createdAt) VALUES (?,?,?,?,?,?,?,?)'
+  );
+  insertLecture.run('l1','c1','Introduction to Algebra','Basic algebraic concepts',45,'# Algebra Basics\n\n- Variables and constants\n- Linear equations',1,now);
+  insertLecture.run('l2','c1','Calculus Fundamentals','Limits and derivatives',50,'# Calculus\n\n- Limits\n- Derivatives\n- Integration basics',2,now);
+  insertLecture.run('l3','c1','Geometry Basics','Shapes and theorems',40,'# Geometry\n\n- Angles\n- Triangles\n- Circles',3,now);
+  insertLecture.run('l4','c2','Laws of Motion','Newton\'s three laws',55,'# Newton\'s Laws\n\n1. Inertia\n2. F=ma\n3. Action-Reaction',1,now);
+  insertLecture.run('l5','c2','Thermodynamics','Heat and energy',48,'# Thermodynamics\n\n- Heat transfer\n- Laws\n- Entropy',2,now);
 
-// Initialize on import
-initializeDB();
+  const insertEnrollment = db.prepare(
+    'INSERT INTO enrollments (id,userId,courseId,progress,completedLectures,enrolledAt) VALUES (?,?,?,?,?,?)'
+  );
+  insertEnrollment.run('e1','u1','c1',66,JSON.stringify(['l1','l2']),now);
+  insertEnrollment.run('e2','u1','c2',50,JSON.stringify(['l4']),now);
+  insertEnrollment.run('e3','u4','c1',33,JSON.stringify(['l1']),now);
+  insertEnrollment.run('e4','u5','c1',100,JSON.stringify(['l1','l2','l3']),now);
+})();
 
-// User operations
+// ─── Users ────────────────────────────────────────────────────────────────────
+
 export const users = {
-  getAll: (): User[] => readJSON<User>(USERS_FILE),
-  
-  getById: (id: string): User | undefined => {
-    const all = readJSON<User>(USERS_FILE);
-    return all.find(u => u.id === id);
+  getAll(): User[] {
+    return db.prepare('SELECT * FROM users ORDER BY createdAt DESC').all() as User[];
   },
-  
-  getByEmail: (email: string): User | undefined => {
-    const all = readJSON<User>(USERS_FILE);
-    return all.find(u => u.email.toLowerCase() === email.toLowerCase());
+  getById(id: string): User | undefined {
+    return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as User | undefined;
   },
-  
-  create: (user: Omit<User, 'id' | 'createdAt'>): User => {
-    const all = readJSON<User>(USERS_FILE);
-    const newUser: User = {
-      ...user,
-      id: generateId(),
-      createdAt: new Date().toISOString(),
-    };
-    all.push(newUser);
-    writeJSON(USERS_FILE, all);
-    return newUser;
+  getByEmail(email: string): User | undefined {
+    return db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(email) as User | undefined;
   },
-  
-  update: (id: string, updates: Partial<User>): User | null => {
-    const all = readJSON<User>(USERS_FILE);
-    const index = all.findIndex(u => u.id === id);
-    if (index === -1) return null;
-    all[index] = { ...all[index], ...updates };
-    writeJSON(USERS_FILE, all);
-    return all[index];
+  getByRole(role: User['role']): User[] {
+    return db.prepare('SELECT * FROM users WHERE role = ?').all(role) as User[];
   },
-  
-  delete: (id: string): boolean => {
-    const all = readJSON<User>(USERS_FILE);
-    const filtered = all.filter(u => u.id !== id);
-    if (filtered.length === all.length) return false;
-    writeJSON(USERS_FILE, filtered);
-    return true;
+  create(data: Omit<User, 'id' | 'createdAt'>): User {
+    const id = generateId();
+    const createdAt = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO users (id,name,email,password,role,createdAt,avatar,macAddress) VALUES (?,?,?,?,?,?,?,?)'
+    ).run(id, data.name, data.email, data.password, data.role, createdAt, data.avatar ?? null, data.macAddress ?? null);
+    return { ...data, id, createdAt };
   },
-  
-  getByRole: (role: User['role']): User[] => {
-    const all = readJSON<User>(USERS_FILE);
-    return all.filter(u => u.role === role);
+  update(id: string, updates: Partial<User>): User | null {
+    const existing = users.getById(id);
+    if (!existing) return null;
+    const merged = { ...existing, ...updates };
+    db.prepare(
+      'UPDATE users SET name=?,email=?,password=?,role=?,avatar=?,macAddress=? WHERE id=?'
+    ).run(merged.name, merged.email, merged.password, merged.role, merged.avatar ?? null, merged.macAddress ?? null, id);
+    return merged;
+  },
+  delete(id: string): boolean {
+    const result = db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    return result.changes > 0;
   },
 };
 
-// Course operations
+// ─── Courses ──────────────────────────────────────────────────────────────────
+
 export const courses = {
-  getAll: (): Course[] => readJSON<Course>(COURSES_FILE),
-  
-  getById: (id: string): Course | undefined => {
-    const all = readJSON<Course>(COURSES_FILE);
-    return all.find(c => c.id === id);
+  getAll(): Course[] {
+    return db.prepare('SELECT * FROM courses ORDER BY createdAt DESC').all() as Course[];
   },
-  
-  getByTeacher: (teacherId: string): Course[] => {
-    const all = readJSON<Course>(COURSES_FILE);
-    return all.filter(c => c.teacherId === teacherId);
+  getById(id: string): Course | undefined {
+    return db.prepare('SELECT * FROM courses WHERE id = ?').get(id) as Course | undefined;
   },
-  
-  create: (course: Omit<Course, 'id' | 'createdAt'>): Course => {
-    const all = readJSON<Course>(COURSES_FILE);
-    const newCourse: Course = {
-      ...course,
-      id: generateId(),
-      createdAt: new Date().toISOString(),
-    };
-    all.push(newCourse);
-    writeJSON(COURSES_FILE, all);
-    return newCourse;
+  getByTeacher(teacherId: string): Course[] {
+    return db.prepare('SELECT * FROM courses WHERE teacherId = ?').all(teacherId) as Course[];
   },
-  
-  update: (id: string, updates: Partial<Course>): Course | null => {
-    const all = readJSON<Course>(COURSES_FILE);
-    const index = all.findIndex(c => c.id === id);
-    if (index === -1) return null;
-    all[index] = { ...all[index], ...updates };
-    writeJSON(COURSES_FILE, all);
-    return all[index];
+  create(data: Omit<Course, 'id' | 'createdAt'>): Course {
+    const id = generateId();
+    const createdAt = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO courses (id,name,description,icon,color,teacherId,createdAt) VALUES (?,?,?,?,?,?,?)'
+    ).run(id, data.name, data.description, data.icon, data.color, data.teacherId, createdAt);
+    return { ...data, id, createdAt };
   },
-  
-  delete: (id: string): boolean => {
-    const all = readJSON<Course>(COURSES_FILE);
-    const filtered = all.filter(c => c.id !== id);
-    if (filtered.length === all.length) return false;
-    writeJSON(COURSES_FILE, filtered);
-    return true;
+  update(id: string, updates: Partial<Course>): Course | null {
+    const existing = courses.getById(id);
+    if (!existing) return null;
+    const merged = { ...existing, ...updates };
+    db.prepare(
+      'UPDATE courses SET name=?,description=?,icon=?,color=?,teacherId=? WHERE id=?'
+    ).run(merged.name, merged.description, merged.icon, merged.color, merged.teacherId, id);
+    return merged;
+  },
+  delete(id: string): boolean {
+    const result = db.prepare('DELETE FROM courses WHERE id = ?').run(id);
+    return result.changes > 0;
   },
 };
 
-// Lecture operations
+// ─── Lectures ─────────────────────────────────────────────────────────────────
+
 export const lectures = {
-  getAll: (): Lecture[] => readJSON<Lecture>(LECTURES_FILE),
-  
-  getById: (id: string): Lecture | undefined => {
-    const all = readJSON<Lecture>(LECTURES_FILE);
-    return all.find(l => l.id === id);
+  getAll(): Lecture[] {
+    return db.prepare('SELECT * FROM lectures ORDER BY "order" ASC').all() as Lecture[];
   },
-  
-  getByCourse: (courseId: string): Lecture[] => {
-    const all = readJSON<Lecture>(LECTURES_FILE);
-    return all.filter(l => l.courseId === courseId).sort((a, b) => a.order - b.order);
+  getById(id: string): Lecture | undefined {
+    return db.prepare('SELECT * FROM lectures WHERE id = ?').get(id) as Lecture | undefined;
   },
-  
-  create: (lecture: Omit<Lecture, 'id' | 'createdAt'>): Lecture => {
-    const all = readJSON<Lecture>(LECTURES_FILE);
-    const newLecture: Lecture = {
-      ...lecture,
-      id: generateId(),
-      createdAt: new Date().toISOString(),
-    };
-    all.push(newLecture);
-    writeJSON(LECTURES_FILE, all);
-    return newLecture;
+  getByCourse(courseId: string): Lecture[] {
+    return db.prepare('SELECT * FROM lectures WHERE courseId = ? ORDER BY "order" ASC').all(courseId) as Lecture[];
   },
-  
-  update: (id: string, updates: Partial<Lecture>): Lecture | null => {
-    const all = readJSON<Lecture>(LECTURES_FILE);
-    const index = all.findIndex(l => l.id === id);
-    if (index === -1) return null;
-    all[index] = { ...all[index], ...updates };
-    writeJSON(LECTURES_FILE, all);
-    return all[index];
+  create(data: Omit<Lecture, 'id' | 'createdAt'>): Lecture {
+    const id = generateId();
+    const createdAt = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO lectures (id,courseId,title,description,videoUrl,duration,notes,"order",createdAt) VALUES (?,?,?,?,?,?,?,?,?)'
+    ).run(id, data.courseId, data.title, data.description, data.videoUrl ?? null, data.duration, data.notes, data.order, createdAt);
+    return { ...data, id, createdAt };
   },
-  
-  delete: (id: string): boolean => {
-    const all = readJSON<Lecture>(LECTURES_FILE);
-    const filtered = all.filter(l => l.id !== id);
-    if (filtered.length === all.length) return false;
-    writeJSON(LECTURES_FILE, filtered);
-    return true;
+  update(id: string, updates: Partial<Lecture>): Lecture | null {
+    const existing = lectures.getById(id);
+    if (!existing) return null;
+    const merged = { ...existing, ...updates };
+    db.prepare(
+      'UPDATE lectures SET title=?,description=?,videoUrl=?,duration=?,notes=?,"order"=? WHERE id=?'
+    ).run(merged.title, merged.description, merged.videoUrl ?? null, merged.duration, merged.notes, merged.order, id);
+    return merged;
+  },
+  delete(id: string): boolean {
+    const result = db.prepare('DELETE FROM lectures WHERE id = ?').run(id);
+    return result.changes > 0;
   },
 };
 
-// Enrollment operations
+// ─── Enrollments ──────────────────────────────────────────────────────────────
+
+function parseEnrollment(row: Record<string, unknown>): Enrollment {
+  return {
+    ...(row as Enrollment),
+    completedLectures: JSON.parse((row.completedLectures as string) || '[]'),
+  };
+}
+
 export const enrollments = {
-  getAll: (): Enrollment[] => readJSON<Enrollment>(ENROLLMENTS_FILE),
-  
-  getByUser: (userId: string): Enrollment[] => {
-    const all = readJSON<Enrollment>(ENROLLMENTS_FILE);
-    return all.filter(e => e.userId === userId);
+  getAll(): Enrollment[] {
+    return (db.prepare('SELECT * FROM enrollments').all() as Record<string, unknown>[]).map(parseEnrollment);
   },
-  
-  getByCourse: (courseId: string): Enrollment[] => {
-    const all = readJSON<Enrollment>(ENROLLMENTS_FILE);
-    return all.filter(e => e.courseId === courseId);
+  getByUser(userId: string): Enrollment[] {
+    return (db.prepare('SELECT * FROM enrollments WHERE userId = ?').all(userId) as Record<string, unknown>[]).map(parseEnrollment);
   },
-  
-  get: (userId: string, courseId: string): Enrollment | undefined => {
-    const all = readJSON<Enrollment>(ENROLLMENTS_FILE);
-    return all.find(e => e.userId === userId && e.courseId === courseId);
+  getByCourse(courseId: string): Enrollment[] {
+    return (db.prepare('SELECT * FROM enrollments WHERE courseId = ?').all(courseId) as Record<string, unknown>[]).map(parseEnrollment);
   },
-  
-  enroll: (userId: string, courseId: string): Enrollment => {
-    const all = readJSON<Enrollment>(ENROLLMENTS_FILE);
-    const existing = all.find(e => e.userId === userId && e.courseId === courseId);
+  get(userId: string, courseId: string): Enrollment | undefined {
+    const row = db.prepare('SELECT * FROM enrollments WHERE userId = ? AND courseId = ?').get(userId, courseId) as Record<string, unknown> | undefined;
+    return row ? parseEnrollment(row) : undefined;
+  },
+  enroll(userId: string, courseId: string): Enrollment {
+    const existing = enrollments.get(userId, courseId);
     if (existing) return existing;
-    
-    const newEnrollment: Enrollment = {
-      id: generateId(),
-      userId,
-      courseId,
-      progress: 0,
-      completedLectures: [],
-      enrolledAt: new Date().toISOString(),
-    };
-    all.push(newEnrollment);
-    writeJSON(ENROLLMENTS_FILE, all);
-    return newEnrollment;
+    const id = generateId();
+    const enrolledAt = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO enrollments (id,userId,courseId,progress,completedLectures,enrolledAt) VALUES (?,?,?,0,\'[]\',?)'
+    ).run(id, userId, courseId, enrolledAt);
+    return { id, userId, courseId, progress: 0, completedLectures: [], enrolledAt };
   },
-  
-  updateProgress: (userId: string, courseId: string, lectureId: string): Enrollment | null => {
-    const all = readJSON<Enrollment>(ENROLLMENTS_FILE);
-    const index = all.findIndex(e => e.userId === userId && e.courseId === courseId);
-    if (index === -1) return null;
-    
-    if (!all[index].completedLectures.includes(lectureId)) {
-      all[index].completedLectures.push(lectureId);
+  updateProgress(userId: string, courseId: string, lectureId: string): Enrollment | null {
+    const existing = enrollments.get(userId, courseId);
+    if (!existing) return null;
+    if (!existing.completedLectures.includes(lectureId)) {
+      existing.completedLectures.push(lectureId);
     }
-    
-    // Calculate progress
-    const courseLectures = lectures.getByCourse(courseId);
-    all[index].progress = Math.round((all[index].completedLectures.length / courseLectures.length) * 100);
-    
-    writeJSON(ENROLLMENTS_FILE, all);
-    return all[index];
+    const total = lectures.getByCourse(courseId).length;
+    const progress = total > 0 ? Math.round((existing.completedLectures.length / total) * 100) : 0;
+    db.prepare(
+      'UPDATE enrollments SET completedLectures=?,progress=? WHERE userId=? AND courseId=?'
+    ).run(JSON.stringify(existing.completedLectures), progress, userId, courseId);
+    return { ...existing, progress };
   },
-  
-  unenroll: (userId: string, courseId: string): boolean => {
-    const all = readJSON<Enrollment>(ENROLLMENTS_FILE);
-    const filtered = all.filter(e => !(e.userId === userId && e.courseId === courseId));
-    if (filtered.length === all.length) return false;
-    writeJSON(ENROLLMENTS_FILE, filtered);
-    return true;
+  unenroll(userId: string, courseId: string): boolean {
+    const result = db.prepare('DELETE FROM enrollments WHERE userId=? AND courseId=?').run(userId, courseId);
+    return result.changes > 0;
   },
 };
 
-// Attendance operations
+// ─── Attendance ───────────────────────────────────────────────────────────────
+
+function parseAttendance(row: Record<string, unknown>): AttendanceRecord {
+  return {
+    ...(row as AttendanceRecord),
+    records: JSON.parse((row.records as string) || '{}'),
+  };
+}
+
 export const attendance = {
-  getAll: (): AttendanceRecord[] => readJSON<AttendanceRecord>(ATTENDANCE_FILE),
-  
-  getByCourse: (courseId: string): AttendanceRecord[] => {
-    const all = readJSON<AttendanceRecord>(ATTENDANCE_FILE);
-    return all.filter(a => a.courseId === courseId).sort((a, b) => 
-      new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
+  getAll(): AttendanceRecord[] {
+    return (db.prepare('SELECT * FROM attendance').all() as Record<string, unknown>[]).map(parseAttendance);
   },
-  
-  getByDate: (courseId: string, date: string): AttendanceRecord | undefined => {
-    const all = readJSON<AttendanceRecord>(ATTENDANCE_FILE);
-    return all.find(a => a.courseId === courseId && a.date === date);
+  getByCourse(courseId: string): AttendanceRecord[] {
+    return (db.prepare('SELECT * FROM attendance WHERE courseId = ? ORDER BY date DESC').all(courseId) as Record<string, unknown>[]).map(parseAttendance);
   },
-  
-  mark: (courseId: string, date: string, records: { [studentId: string]: 'present' | 'absent' | 'late' }, markedBy: string): AttendanceRecord => {
-    const all = readJSON<AttendanceRecord>(ATTENDANCE_FILE);
-    const existingIndex = all.findIndex(a => a.courseId === courseId && a.date === date);
-    
-    if (existingIndex !== -1) {
-      all[existingIndex].records = records;
-      all[existingIndex].markedBy = markedBy;
-      writeJSON(ATTENDANCE_FILE, all);
-      return all[existingIndex];
+  getByDate(courseId: string, date: string): AttendanceRecord | undefined {
+    const row = db.prepare('SELECT * FROM attendance WHERE courseId=? AND date=?').get(courseId, date) as Record<string, unknown> | undefined;
+    return row ? parseAttendance(row) : undefined;
+  },
+  mark(courseId: string, date: string, records: AttendanceRecord['records'], markedBy: string): AttendanceRecord {
+    const existing = attendance.getByDate(courseId, date);
+    const recordsJson = JSON.stringify(records);
+    if (existing) {
+      db.prepare('UPDATE attendance SET records=?,markedBy=? WHERE courseId=? AND date=?')
+        .run(recordsJson, markedBy, courseId, date);
+      return { ...existing, records, markedBy };
     }
-    
-    const newRecord: AttendanceRecord = {
-      id: generateId(),
-      courseId,
-      date,
-      records,
-      markedBy,
-      createdAt: new Date().toISOString(),
-    };
-    all.push(newRecord);
-    writeJSON(ATTENDANCE_FILE, all);
-    return newRecord;
+    const id = generateId();
+    const createdAt = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO attendance (id,courseId,date,records,markedBy,createdAt) VALUES (?,?,?,?,?,?)'
+    ).run(id, courseId, date, recordsJson, markedBy, createdAt);
+    return { id, courseId, date, records, markedBy, createdAt };
   },
-  
-  getStudentAttendance: (courseId: string, studentId: string): { total: number; present: number; percentage: number } => {
-    const records = readJSON<AttendanceRecord>(ATTENDANCE_FILE).filter(a => a.courseId === courseId);
-    let present = 0;
-    let total = 0;
-    
-    records.forEach(r => {
+  getStudentAttendance(courseId: string, studentId: string): { total: number; present: number; percentage: number } {
+    const rows = attendance.getByCourse(courseId);
+    let present = 0, total = 0;
+    for (const r of rows) {
       if (r.records[studentId]) {
         total++;
-        if (r.records[studentId] === 'present' || r.records[studentId] === 'late') {
-          present++;
-        }
+        if (r.records[studentId] === 'present' || r.records[studentId] === 'late') present++;
       }
-    });
-    
-    return {
-      total,
-      present,
-      percentage: total > 0 ? Math.round((present / total) * 100) : 0,
-    };
+    }
+    return { total, present, percentage: total > 0 ? Math.round((present / total) * 100) : 0 };
   },
 };
 
-// Invite operations
+// ─── Invites ──────────────────────────────────────────────────────────────────
+
 export const invites = {
-  getAll: (): Invite[] => readJSON<Invite>(INVITES_FILE),
-
-  getByToken: (token: string): Invite | undefined => {
-    const all = readJSON<Invite>(INVITES_FILE);
-    return all.find(i => i.token === token);
+  getAll(): Invite[] {
+    return db.prepare('SELECT * FROM invites ORDER BY createdAt DESC').all() as Invite[];
   },
-
-  create: (role: Invite['role'], createdBy: string): Invite => {
-    const all = readJSON<Invite>(INVITES_FILE);
+  getByToken(token: string): Invite | undefined {
+    return db.prepare('SELECT * FROM invites WHERE token = ?').get(token) as Invite | undefined;
+  },
+  create(role: Invite['role'], createdBy: string): Invite {
     const token = generateId() + generateId();
     const now = new Date();
-    const expires = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    const invite: Invite = {
-      token,
-      role,
-      createdBy,
-      createdAt: now.toISOString(),
-      expiresAt: expires.toISOString(),
-    };
-    all.push(invite);
-    writeJSON(INVITES_FILE, all);
+    const createdAt = now.toISOString();
+    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    db.prepare(
+      'INSERT INTO invites (token,role,createdBy,createdAt,expiresAt) VALUES (?,?,?,?,?)'
+    ).run(token, role, createdBy, createdAt, expiresAt);
+    return { token, role, createdBy, createdAt, expiresAt };
+  },
+  consume(token: string): Invite | null {
+    const invite = invites.getByToken(token);
+    if (!invite) return null;
+    db.prepare('DELETE FROM invites WHERE token = ?').run(token);
     return invite;
   },
-
-  consume: (token: string): Invite | null => {
-    const all = readJSON<Invite>(INVITES_FILE);
-    const index = all.findIndex(i => i.token === token);
-    if (index === -1) return null;
-    const [invite] = all.splice(index, 1);
-    writeJSON(INVITES_FILE, all);
-    return invite;
+  delete(token: string): boolean {
+    const result = db.prepare('DELETE FROM invites WHERE token = ?').run(token);
+    return result.changes > 0;
   },
-
-  delete: (token: string): boolean => {
-    const all = readJSON<Invite>(INVITES_FILE);
-    const filtered = all.filter(i => i.token !== token);
-    if (filtered.length === all.length) return false;
-    writeJSON(INVITES_FILE, filtered);
-    return true;
-  },
-
-  isValid: (token: string): Invite | null => {
-    const invite = readJSON<Invite>(INVITES_FILE).find(i => i.token === token);
+  isValid(token: string): Invite | null {
+    const invite = invites.getByToken(token);
     if (!invite) return null;
     if (new Date(invite.expiresAt) < new Date()) return null;
     return invite;
