@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mkdir, appendFile, rename, unlink, stat } from 'fs/promises';
 import path from 'path';
 
-// Increase max duration for uploads
-export const maxDuration = 300;
+// Allow up to 1 hour per chunk (25 GB uploads on slow networks)
+export const maxDuration = 3600;
 
 export async function POST(request: NextRequest) {
   try {

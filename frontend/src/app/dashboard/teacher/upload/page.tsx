@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { authFetch } from '@/lib/api';
+import { authFetch, getStoredUser } from '@/lib/api';
 
 interface Course {
   id: string;
@@ -35,6 +35,9 @@ export default function UploadLecturePage() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [uploadSpeed, setUploadSpeed] = useState(0); // MB/s
+  const [uploadETA, setUploadETA] = useState<number | null>(null); // seconds
+  const [uploadPhase, setUploadPhase] = useState<'uploading' | 'finalizing' | 'done'>('uploading');
   const [generatingNotes, setGeneratingNotes] = useState(false);
   const [noteGenStep, setNoteGenStep] = useState(0); // 0: idle, 1: preparing, 2: transcribing, 3: generating, 4: done
   const [noteGenProgress, setNoteGenProgress] = useState(0);
@@ -154,8 +157,8 @@ export default function UploadLecturePage() {
   const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 100 * 1024 * 1024 * 1024) {
-        setError('Video file must be less than 100GB');
+      if (file.size > 25 * 1024 * 1024 * 1024) {
+        setError('Video file must be less than 25 GB');
         return;
       }
       setVideoFile(file);
@@ -170,80 +173,107 @@ export default function UploadLecturePage() {
     }
   };
 
+  const xhrPost = (
+    url: string,
+    formData: FormData,
+    onProgress: (loaded: number, total: number) => void
+  ): Promise<Record<string, unknown>> => {
+    return new Promise((resolve, reject) => {
+      const user = getStoredUser();
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url);
+      if (user) {
+        xhr.setRequestHeader('x-user-id', user.id);
+        xhr.setRequestHeader('x-user-role', user.role);
+      }
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(e.loaded, e.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText));
+        } else {
+          reject(new Error(`Upload failed (${xhr.status})`));
+        }
+      };
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.send(formData);
+    });
+  };
+
   const uploadVideo = async (): Promise<string | null> => {
     if (!videoFile) return null;
-    
+
     setUploading(true);
     setUploadProgress(0);
-    
-    const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
+    setUploadSpeed(0);
+    setUploadETA(null);
+    setUploadPhase('uploading');
+
     const fileSize = videoFile.size;
-    
-    // Use chunked upload for files > 50MB
-    if (fileSize > 50 * 1024 * 1024) {
-      try {
+    const startTime = Date.now();
+
+    const updateProgress = (bytesUploaded: number) => {
+      const pct = Math.min(Math.round((bytesUploaded / fileSize) * 100), 99);
+      setUploadProgress(pct);
+      const elapsed = (Date.now() - startTime) / 1000;
+      if (elapsed > 0.3 && bytesUploaded > 0) {
+        const speedBps = bytesUploaded / elapsed;
+        setUploadSpeed(speedBps / (1024 * 1024));
+        setUploadETA((fileSize - bytesUploaded) / speedBps);
+      }
+    };
+
+    const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB — fast throughput, well under any body-parser limit
+
+    try {
+      if (fileSize > 10 * 1024 * 1024) { // always chunk files > 10 MB
         const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
         const uploadId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        let bytesUploadedSoFar = 0;
         let finalUrl = '';
-        
+
         for (let i = 0; i < totalChunks; i++) {
           const start = i * CHUNK_SIZE;
           const end = Math.min(start + CHUNK_SIZE, fileSize);
           const chunk = videoFile.slice(start, end);
-          
+          const chunkSize = end - start;
+
           const formData = new FormData();
           formData.append('chunk', chunk);
           formData.append('chunkIndex', String(i));
           formData.append('totalChunks', String(totalChunks));
           formData.append('uploadId', uploadId);
           formData.append('originalName', videoFile.name);
-          
-          const res = await authFetch('/api/upload', {
-            method: 'POST',
-            body: formData,
+
+          const data = await xhrPost('/api/upload', formData, (loaded) => {
+            updateProgress(bytesUploadedSoFar + loaded);
           });
-          
-          if (!res.ok) {
-            throw new Error(`Chunk ${i + 1} upload failed`);
-          }
-          
-          const data = await res.json();
-          setUploadProgress(Math.round(((i + 1) / totalChunks) * 100));
-          
-          if (data.complete && data.url) {
-            finalUrl = data.url;
-          }
+
+          bytesUploadedSoFar += chunkSize;
+          if (data.complete && data.url) finalUrl = data.url as string;
         }
-        
+
+        setUploadPhase('finalizing');
+        setUploadProgress(100);
         return finalUrl;
-      } catch (err) {
-        throw new Error('Failed to upload video');
-      } finally {
-        setUploading(false);
       }
-    }
-    
-    // Regular upload for smaller files
-    const formData = new FormData();
-    formData.append('file', videoFile);
-    
-    try {
-      const res = await authFetch('/api/upload', {
-        method: 'POST',
-        body: formData,
+
+      // Single-request upload for small files
+      const formData = new FormData();
+      formData.append('file', videoFile);
+      const data = await xhrPost('/api/upload', formData, (loaded) => {
+        updateProgress(loaded);
       });
-      
-      if (!res.ok) {
-        throw new Error('Video upload failed');
-      }
-      
-      const data = await res.json();
+
+      setUploadPhase('finalizing');
       setUploadProgress(100);
-      return data.url;
+      return data.url as string;
     } catch (err) {
       throw new Error('Failed to upload video');
     } finally {
       setUploading(false);
+      setUploadPhase('done');
     }
   };
 
@@ -432,19 +462,57 @@ export default function UploadLecturePage() {
                 <div>
                   <span className="text-4xl block mb-2">📹</span>
                   <p className="text-white/70">Click to upload video</p>
-                  <p className="text-white/40 text-sm">MP4, WebM, MOV (max 100GB)</p>
+                  <p className="text-white/40 text-sm">MP4, WebM, MOV (max 25 GB)</p>
                 </div>
               )}
             </div>
             {uploading && (
-              <div className="mt-2">
-                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-emerald-500 transition-all duration-300"
+              <div className="mt-3 p-4 bg-white/5 border border-white/10 rounded-xl space-y-2">
+                {/* Phase label + percentage */}
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-white/70 font-medium">
+                    {uploadPhase === 'finalizing' ? 'Finalizing…' : 'Uploading video'}
+                  </span>
+                  <span className="font-mono text-emerald-400 font-semibold">{uploadProgress}%</span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="relative h-2.5 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-150 ease-linear"
                     style={{ width: `${uploadProgress}%` }}
                   />
+                  {/* Shimmer effect while uploading */}
+                  {uploadProgress < 100 && (
+                    <div
+                      className="absolute inset-y-0 w-24 bg-gradient-to-r from-transparent via-white/20 to-transparent rounded-full animate-shimmer"
+                      style={{ left: `${Math.max(uploadProgress - 12, 0)}%` }}
+                    />
+                  )}
                 </div>
-                <p className="text-white/50 text-sm mt-1">Uploading... {uploadProgress}%</p>
+
+                {/* Speed + ETA */}
+                <div className="flex justify-between text-xs text-white/50">
+                  <span>
+                    {uploadSpeed > 0
+                      ? `${uploadSpeed.toFixed(1)} MB/s`
+                      : 'Connecting…'}
+                  </span>
+                  <span>
+                    {uploadETA !== null && uploadETA > 1
+                      ? uploadETA < 60
+                        ? `${Math.round(uploadETA)}s remaining`
+                        : `${Math.floor(uploadETA / 60)}m ${Math.round(uploadETA % 60)}s remaining`
+                      : uploadProgress >= 99 ? 'Almost done…' : ''}
+                  </span>
+                </div>
+
+                {/* Bytes transferred */}
+                <p className="text-xs text-white/35">
+                  {((uploadProgress / 100) * (videoFile?.size ?? 0) / (1024 * 1024)).toFixed(1)} MB
+                  {' / '}
+                  {((videoFile?.size ?? 0) / (1024 * 1024)).toFixed(1)} MB uploaded
+                </p>
               </div>
             )}
             {warning && (
