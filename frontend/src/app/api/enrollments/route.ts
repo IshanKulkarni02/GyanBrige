@@ -5,6 +5,7 @@ import { logRoute } from '@/lib/logger';
 
 // GET enrollments for a user
 export const GET = logRoute(async function GET(request: NextRequest) {
+  if (!requireAuth(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
@@ -57,6 +58,7 @@ export const GET = logRoute(async function GET(request: NextRequest) {
 
 // POST enroll in a course
 export const POST = logRoute(async function POST(request: NextRequest) {
+  if (!requireAuth(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const { userId, courseId } = await request.json();
 

@@ -5,6 +5,7 @@ import { logRoute } from '@/lib/logger';
 
 // GET all lectures or by course
 export const GET = logRoute(async function GET(request: NextRequest) {
+  if (!requireAuth(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const { searchParams } = new URL(request.url);
     const courseId = searchParams.get('courseId');
