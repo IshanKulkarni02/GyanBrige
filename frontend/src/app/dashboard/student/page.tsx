@@ -82,8 +82,9 @@ export default function StudentDashboard() {
 
         <nav className="space-y-2">
           {[
-            { icon: '🏠', label: 'Dashboard',  href: '/dashboard/student', active: true },
-            { icon: '📚', label: 'My Courses', href: '/dashboard/student/courses' },
+            { icon: '🏠', label: 'Dashboard',   href: '/dashboard/student',            active: true },
+            { icon: '📚', label: 'My Courses',  href: '/dashboard/student/courses' },
+            { icon: '📊', label: 'Attendance',  href: '/dashboard/student/attendance' },
           ].map((item) => (
             <Link
               key={item.label}
