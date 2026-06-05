@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { settings as dbSettings, lectures } from '@/lib/db';
+import { requireAuth } from '@/lib/server-auth';
 import { createReadStream, existsSync, statSync } from 'fs';
 import { unlink } from 'fs/promises';
 import { execFile } from 'child_process';

@@ -29,7 +29,8 @@ export const PUT = logRoute(async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const caller = requireAuth(request);
-  if (!caller || caller.role === 'student') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (caller.role !== 'teacher' && caller.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
     const { id } = await params;
     const lecture = lectures.getById(id);
@@ -53,7 +54,8 @@ export const DELETE = logRoute(async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const caller = requireAuth(request);
-  if (!caller || caller.role === 'student') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (caller.role !== 'teacher' && caller.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
     const { id } = await params;
     const lecture = lectures.getById(id);

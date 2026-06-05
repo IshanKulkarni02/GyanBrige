@@ -92,6 +92,10 @@ export default function TeacherDashboard() {
             { icon: '📤', label: 'Upload Lecture', href: '/dashboard/teacher/upload' },
             { icon: '📋', label: 'Attendance', href: '/dashboard/teacher/attendance' },
             { icon: '🎙️', label: 'Record', href: '/dashboard/teacher/record' },
+            { icon: '📅', label: 'Timetable', href: '/dashboard/teacher/timetable' },
+            { icon: '📝', label: 'Exams', href: '/dashboard/teacher/exams' },
+            { icon: '⭐', label: 'Feedback', href: '/dashboard/teacher/feedback' },
+            { icon: '📢', label: 'Grievances', href: '/dashboard/teacher/grievances' },
           ].map((item) => (
             <Link
               key={item.label}
