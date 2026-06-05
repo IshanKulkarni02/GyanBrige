@@ -24,9 +24,9 @@ const bulkEnrollSchema = z.object({
 });
 
 export const registerBatches: FastifyPluginAsync = async (app) => {
-  // List all batches (optionally filtered by department)
+  // List all batches (optionally filtered by department) — admin/staff only
   app.get('/', async (req) => {
-    await requireAuth(req);
+    await requireRole(req, Role.ADMIN, Role.STAFF);
     const { deptId } = z.object({ deptId: z.string().uuid().optional() }).parse(req.query);
     return prisma.batch.findMany({
       where: deptId ? { deptId } : undefined,
