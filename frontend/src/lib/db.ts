@@ -277,6 +277,89 @@ db.exec(`
     submittedAt TEXT NOT NULL,
     UNIQUE(quizId, userId)
   );
+
+  CREATE TABLE IF NOT EXISTS timetable (
+    id        TEXT PRIMARY KEY,
+    courseId  TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    teacherId TEXT NOT NULL REFERENCES users(id),
+    day       TEXT NOT NULL CHECK(day IN ('monday','tuesday','wednesday','thursday','friday','saturday')),
+    startTime TEXT NOT NULL,
+    endTime   TEXT NOT NULL,
+    room      TEXT NOT NULL DEFAULT '',
+    createdAt TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS grievances (
+    id          TEXT PRIMARY KEY,
+    submittedBy TEXT NOT NULL REFERENCES users(id),
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL,
+    category    TEXT NOT NULL DEFAULT 'general',
+    priority    TEXT NOT NULL DEFAULT 'medium',
+    status      TEXT NOT NULL DEFAULT 'open',
+    adminNote   TEXT NOT NULL DEFAULT '',
+    createdAt   TEXT NOT NULL,
+    updatedAt   TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS feedback (
+    id            TEXT PRIMARY KEY,
+    studentId     TEXT NOT NULL REFERENCES users(id),
+    courseId      TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    teacherId     TEXT NOT NULL REFERENCES users(id),
+    subjectRating INTEGER NOT NULL DEFAULT 5,
+    teacherRating INTEGER NOT NULL DEFAULT 5,
+    comment       TEXT NOT NULL DEFAULT '',
+    anonymous     INTEGER NOT NULL DEFAULT 0,
+    createdAt     TEXT NOT NULL,
+    UNIQUE(studentId, courseId)
+  );
+
+  CREATE TABLE IF NOT EXISTS exams (
+    id          TEXT PRIMARY KEY,
+    courseId    TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    duration    INTEGER NOT NULL DEFAULT 60,
+    totalMarks  INTEGER NOT NULL DEFAULT 100,
+    status      TEXT NOT NULL DEFAULT 'draft',
+    createdBy   TEXT NOT NULL REFERENCES users(id),
+    createdAt   TEXT NOT NULL,
+    startsAt    TEXT,
+    endsAt      TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS exam_questions (
+    id             TEXT PRIMARY KEY,
+    examId         TEXT NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+    question       TEXT NOT NULL,
+    maxMarks       INTEGER NOT NULL DEFAULT 10,
+    expectedAnswer TEXT NOT NULL DEFAULT '',
+    "order"        INTEGER NOT NULL DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS exam_submissions (
+    id          TEXT PRIMARY KEY,
+    examId      TEXT NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+    studentId   TEXT NOT NULL REFERENCES users(id),
+    status      TEXT NOT NULL DEFAULT 'in_progress',
+    totalMarks  INTEGER,
+    startedAt   TEXT NOT NULL,
+    submittedAt TEXT,
+    UNIQUE(examId, studentId)
+  );
+
+  CREATE TABLE IF NOT EXISTS exam_answers (
+    id               TEXT PRIMARY KEY,
+    submissionId     TEXT NOT NULL REFERENCES exam_submissions(id) ON DELETE CASCADE,
+    questionId       TEXT NOT NULL REFERENCES exam_questions(id) ON DELETE CASCADE,
+    answer           TEXT NOT NULL DEFAULT '',
+    marksAwarded     INTEGER,
+    teacherFeedback  TEXT NOT NULL DEFAULT '',
+    aiSuggestedMarks INTEGER,
+    aiConfidence     REAL,
+    UNIQUE(submissionId, questionId)
+  );
 `);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -829,4 +912,276 @@ export const quizAttempts = {
   },
 };
 
-export default { users, courses, lectures, enrollments, attendance, attendanceSessions, attendancePolicies, attendanceCheckins, invites, settings, quizzes, quizAttempts };
+// ─── Timetable ────────────────────────────────────────────────────────────────
+
+export interface TimetableEntry {
+  id: string;
+  courseId: string;
+  teacherId: string;
+  day: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
+  startTime: string;
+  endTime: string;
+  room: string;
+  createdAt: string;
+}
+
+export const timetable = {
+  getAll(): TimetableEntry[] {
+    return db.prepare('SELECT * FROM timetable ORDER BY day, startTime').all() as TimetableEntry[];
+  },
+  getByCourse(courseId: string): TimetableEntry[] {
+    return db.prepare('SELECT * FROM timetable WHERE courseId=? ORDER BY day, startTime').all(courseId) as TimetableEntry[];
+  },
+  getByTeacher(teacherId: string): TimetableEntry[] {
+    return db.prepare('SELECT * FROM timetable WHERE teacherId=? ORDER BY day, startTime').all(teacherId) as TimetableEntry[];
+  },
+  create(data: Omit<TimetableEntry, 'id' | 'createdAt'>): TimetableEntry {
+    const id = generateId();
+    const createdAt = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO timetable (id,courseId,teacherId,day,startTime,endTime,room,createdAt) VALUES (?,?,?,?,?,?,?,?)'
+    ).run(id, data.courseId, data.teacherId, data.day, data.startTime, data.endTime, data.room, createdAt);
+    return { ...data, id, createdAt };
+  },
+  delete(id: string): boolean {
+    return db.prepare('DELETE FROM timetable WHERE id=?').run(id).changes > 0;
+  },
+};
+
+// ─── Grievances ───────────────────────────────────────────────────────────────
+
+export interface Grievance {
+  id: string;
+  submittedBy: string;
+  title: string;
+  description: string;
+  category: string;
+  priority: string;
+  status: string;
+  adminNote: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const grievances = {
+  getAll(): Grievance[] {
+    return db.prepare('SELECT * FROM grievances ORDER BY createdAt DESC').all() as Grievance[];
+  },
+  getByUser(userId: string): Grievance[] {
+    return db.prepare('SELECT * FROM grievances WHERE submittedBy=? ORDER BY createdAt DESC').all(userId) as Grievance[];
+  },
+  getById(id: string): Grievance | undefined {
+    return db.prepare('SELECT * FROM grievances WHERE id=?').get(id) as Grievance | undefined;
+  },
+  create(data: Omit<Grievance, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'adminNote'>): Grievance {
+    const id = generateId();
+    const now = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO grievances (id,submittedBy,title,description,category,priority,status,adminNote,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?)'
+    ).run(id, data.submittedBy, data.title, data.description, data.category, data.priority, 'open', '', now, now);
+    return { ...data, id, status: 'open', adminNote: '', createdAt: now, updatedAt: now };
+  },
+  update(id: string, updates: Partial<Pick<Grievance, 'status' | 'adminNote'>>): Grievance | null {
+    const existing = grievances.getById(id);
+    if (!existing) return null;
+    const merged = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+    db.prepare('UPDATE grievances SET status=?,adminNote=?,updatedAt=? WHERE id=?')
+      .run(merged.status, merged.adminNote, merged.updatedAt, id);
+    return merged;
+  },
+};
+
+// ─── Feedback ─────────────────────────────────────────────────────────────────
+
+export interface Feedback {
+  id: string;
+  studentId: string;
+  courseId: string;
+  teacherId: string;
+  subjectRating: number;
+  teacherRating: number;
+  comment: string;
+  anonymous: boolean;
+  createdAt: string;
+}
+
+function parseFeedback(row: Record<string, unknown>): Feedback {
+  return { ...(row as unknown as Feedback), anonymous: !!(row.anonymous as number) };
+}
+
+export const feedbackStore = {
+  getAll(): Feedback[] {
+    return (db.prepare('SELECT * FROM feedback ORDER BY createdAt DESC').all() as Record<string, unknown>[]).map(parseFeedback);
+  },
+  getByCourse(courseId: string): Feedback[] {
+    return (db.prepare('SELECT * FROM feedback WHERE courseId=? ORDER BY createdAt DESC').all(courseId) as Record<string, unknown>[]).map(parseFeedback);
+  },
+  getByTeacher(teacherId: string): Feedback[] {
+    return (db.prepare('SELECT * FROM feedback WHERE teacherId=? ORDER BY createdAt DESC').all(teacherId) as Record<string, unknown>[]).map(parseFeedback);
+  },
+  getByStudent(studentId: string): Feedback[] {
+    return (db.prepare('SELECT * FROM feedback WHERE studentId=? ORDER BY createdAt DESC').all(studentId) as Record<string, unknown>[]).map(parseFeedback);
+  },
+  getByStudentAndCourse(studentId: string, courseId: string): Feedback | undefined {
+    const row = db.prepare('SELECT * FROM feedback WHERE studentId=? AND courseId=?').get(studentId, courseId) as Record<string, unknown> | undefined;
+    return row ? parseFeedback(row) : undefined;
+  },
+  create(data: Omit<Feedback, 'id' | 'createdAt'>): Feedback {
+    const id = generateId();
+    const createdAt = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO feedback (id,studentId,courseId,teacherId,subjectRating,teacherRating,comment,anonymous,createdAt) VALUES (?,?,?,?,?,?,?,?,?)'
+    ).run(id, data.studentId, data.courseId, data.teacherId, data.subjectRating, data.teacherRating, data.comment, data.anonymous ? 1 : 0, createdAt);
+    return { ...data, id, createdAt };
+  },
+};
+
+// ─── Exams ────────────────────────────────────────────────────────────────────
+
+export interface Exam {
+  id: string;
+  courseId: string;
+  title: string;
+  description: string;
+  duration: number;
+  totalMarks: number;
+  status: 'draft' | 'active' | 'closed';
+  createdBy: string;
+  createdAt: string;
+  startsAt?: string;
+  endsAt?: string;
+}
+
+export interface ExamQuestion {
+  id: string;
+  examId: string;
+  question: string;
+  maxMarks: number;
+  expectedAnswer: string;
+  order: number;
+}
+
+export interface ExamSubmission {
+  id: string;
+  examId: string;
+  studentId: string;
+  status: 'in_progress' | 'submitted' | 'marked';
+  totalMarks?: number;
+  startedAt: string;
+  submittedAt?: string;
+}
+
+export interface ExamAnswer {
+  id: string;
+  submissionId: string;
+  questionId: string;
+  answer: string;
+  marksAwarded?: number;
+  teacherFeedback: string;
+  aiSuggestedMarks?: number;
+  aiConfidence?: number;
+}
+
+export const exams = {
+  getAll(): Exam[] {
+    return db.prepare('SELECT * FROM exams ORDER BY createdAt DESC').all() as Exam[];
+  },
+  getByCourse(courseId: string): Exam[] {
+    return db.prepare('SELECT * FROM exams WHERE courseId=? ORDER BY createdAt DESC').all(courseId) as Exam[];
+  },
+  getById(id: string): Exam | undefined {
+    return db.prepare('SELECT * FROM exams WHERE id=?').get(id) as Exam | undefined;
+  },
+  create(data: Omit<Exam, 'id' | 'createdAt'>): Exam {
+    const id = generateId();
+    const createdAt = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO exams (id,courseId,title,description,duration,totalMarks,status,createdBy,createdAt,startsAt,endsAt) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
+    ).run(id, data.courseId, data.title, data.description, data.duration, data.totalMarks, data.status, data.createdBy, createdAt, data.startsAt ?? null, data.endsAt ?? null);
+    return { ...data, id, createdAt };
+  },
+  update(id: string, updates: Partial<Exam>): Exam | null {
+    const existing = exams.getById(id);
+    if (!existing) return null;
+    const merged = { ...existing, ...updates };
+    db.prepare('UPDATE exams SET title=?,description=?,duration=?,totalMarks=?,status=?,startsAt=?,endsAt=? WHERE id=?')
+      .run(merged.title, merged.description, merged.duration, merged.totalMarks, merged.status, merged.startsAt ?? null, merged.endsAt ?? null, id);
+    return merged;
+  },
+  delete(id: string): boolean {
+    return db.prepare('DELETE FROM exams WHERE id=?').run(id).changes > 0;
+  },
+};
+
+export const examQuestions = {
+  getByExam(examId: string): ExamQuestion[] {
+    return db.prepare('SELECT * FROM exam_questions WHERE examId=? ORDER BY "order" ASC').all(examId) as ExamQuestion[];
+  },
+  getById(id: string): ExamQuestion | undefined {
+    return db.prepare('SELECT * FROM exam_questions WHERE id=?').get(id) as ExamQuestion | undefined;
+  },
+  create(data: Omit<ExamQuestion, 'id'>): ExamQuestion {
+    const id = generateId();
+    db.prepare(
+      'INSERT INTO exam_questions (id,examId,question,maxMarks,expectedAnswer,"order") VALUES (?,?,?,?,?,?)'
+    ).run(id, data.examId, data.question, data.maxMarks, data.expectedAnswer, data.order);
+    return { ...data, id };
+  },
+  delete(id: string): boolean {
+    return db.prepare('DELETE FROM exam_questions WHERE id=?').run(id).changes > 0;
+  },
+};
+
+export const examSubmissions = {
+  getByExam(examId: string): ExamSubmission[] {
+    return db.prepare('SELECT * FROM exam_submissions WHERE examId=? ORDER BY submittedAt DESC').all(examId) as ExamSubmission[];
+  },
+  getByStudent(examId: string, studentId: string): ExamSubmission | undefined {
+    return db.prepare('SELECT * FROM exam_submissions WHERE examId=? AND studentId=?').get(examId, studentId) as ExamSubmission | undefined;
+  },
+  getById(id: string): ExamSubmission | undefined {
+    return db.prepare('SELECT * FROM exam_submissions WHERE id=?').get(id) as ExamSubmission | undefined;
+  },
+  start(examId: string, studentId: string): ExamSubmission {
+    const existing = examSubmissions.getByStudent(examId, studentId);
+    if (existing) return existing;
+    const id = generateId();
+    const startedAt = new Date().toISOString();
+    db.prepare('INSERT INTO exam_submissions (id,examId,studentId,status,startedAt) VALUES (?,?,?,?,?)')
+      .run(id, examId, studentId, 'in_progress', startedAt);
+    return { id, examId, studentId, status: 'in_progress', startedAt };
+  },
+  submit(id: string): ExamSubmission | null {
+    const existing = examSubmissions.getById(id);
+    if (!existing) return null;
+    const submittedAt = new Date().toISOString();
+    db.prepare("UPDATE exam_submissions SET status='submitted',submittedAt=? WHERE id=?").run(submittedAt, id);
+    return { ...existing, status: 'submitted', submittedAt };
+  },
+  mark(id: string, totalMarks: number): ExamSubmission | null {
+    const existing = examSubmissions.getById(id);
+    if (!existing) return null;
+    db.prepare("UPDATE exam_submissions SET status='marked',totalMarks=? WHERE id=?").run(totalMarks, id);
+    return { ...existing, status: 'marked', totalMarks };
+  },
+};
+
+export const examAnswers = {
+  getBySubmission(submissionId: string): ExamAnswer[] {
+    return db.prepare('SELECT * FROM exam_answers WHERE submissionId=?').all(submissionId) as ExamAnswer[];
+  },
+  upsert(data: Omit<ExamAnswer, 'id'>): ExamAnswer {
+    const existing = db.prepare('SELECT * FROM exam_answers WHERE submissionId=? AND questionId=?').get(data.submissionId, data.questionId) as ExamAnswer | undefined;
+    if (existing) {
+      db.prepare('UPDATE exam_answers SET answer=?,marksAwarded=?,teacherFeedback=?,aiSuggestedMarks=?,aiConfidence=? WHERE id=?')
+        .run(data.answer, data.marksAwarded ?? null, data.teacherFeedback, data.aiSuggestedMarks ?? null, data.aiConfidence ?? null, existing.id);
+      return { ...existing, ...data };
+    }
+    const id = generateId();
+    db.prepare('INSERT INTO exam_answers (id,submissionId,questionId,answer,marksAwarded,teacherFeedback,aiSuggestedMarks,aiConfidence) VALUES (?,?,?,?,?,?,?,?)')
+      .run(id, data.submissionId, data.questionId, data.answer, data.marksAwarded ?? null, data.teacherFeedback, data.aiSuggestedMarks ?? null, data.aiConfidence ?? null);
+    return { ...data, id };
+  },
+};
+
+export default { users, courses, lectures, enrollments, attendance, attendanceSessions, attendancePolicies, attendanceCheckins, invites, settings, quizzes, quizAttempts, timetable, grievances, feedbackStore, exams, examQuestions, examSubmissions, examAnswers };
