@@ -52,6 +52,7 @@ model Department {
   head     User?      @relation("DeptHead", fields: [headId], references: [id])
   subjects Subject[]
   invites  InviteLink[]
+  batches  Batch[]
 
   @@index([collegeId])
 }
@@ -146,6 +147,24 @@ model InviteLink {
 // Academics
 // ────────────────────────────────────────────────────────────────────
 
+// A Batch represents a cohort of students in a programme (e.g. "CS 2022-26").
+// Batches belong to a department and enroll through courses by semester.
+model Batch {
+  id             String   @id @default(uuid())
+  name           String
+  programmeCode  String
+  deptId         String
+  startYear      Int
+  graduationYear Int
+  currentSemester Int     @default(1)
+  createdAt      DateTime @default(now())
+
+  department  Department   @relation(fields: [deptId], references: [id])
+  enrollments Enrollment[]
+
+  @@index([deptId])
+}
+
 model Subject {
   id           String  @id @default(uuid())
   code         String  @unique
@@ -200,14 +219,17 @@ model Enrollment {
   id        String   @id @default(uuid())
   userId    String
   courseId  String
+  batchId   String?
   status    String   @default("ACTIVE")
   joinedAt  DateTime @default(now())
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  batch  Batch? @relation(fields: [batchId], references: [id])
 
   @@unique([userId, courseId])
   @@index([courseId])
+  @@index([batchId])
 }
 
 model Timetable {
