@@ -48,8 +48,23 @@ export const registerCourses: FastifyPluginAsync = async (app) => {
   });
 
   app.get('/:id', async (req) => {
-    await requireAuth(req);
+    const me = await requireAuth(req);
     const { id } = req.params as { id: string };
+    // Verify the caller is enrolled, teaches the course, or is admin/staff
+    const isAdmin = me.roles.includes(Role.ADMIN) || me.roles.includes(Role.STAFF);
+    if (!isAdmin) {
+      const access = await prisma.course.findFirst({
+        where: {
+          id,
+          OR: [
+            { enrollments: { some: { userId: me.id } } },
+            { teachers: { some: { id: me.id } } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!access) throw new AppError(403, 'FORBIDDEN', 'Not enrolled in this course');
+    }
     return prisma.course.findUniqueOrThrow({
       where: { id },
       include: {

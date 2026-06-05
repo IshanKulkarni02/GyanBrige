@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { spawnSync } from 'child_process';
 import { users } from '@/lib/db';
 import { lookupVendor } from '@/lib/oui';
 import { logRoute } from '@/lib/logger';
+import { requireAuth } from '@/lib/server-auth';
 
 export interface ScannedDevice {
   mac: string;
@@ -82,7 +83,12 @@ function populateArpCache(): void {
   } catch { /* non-fatal */ }
 }
 
-export const GET = logRoute(async function GET() {
+export const GET = logRoute(async function GET(request: NextRequest) {
+  const caller = requireAuth(request);
+  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (caller.role !== 'teacher' && caller.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden — teachers and admins only' }, { status: 403 });
+  }
   try {
     populateArpCache();
 

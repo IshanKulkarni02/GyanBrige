@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { attendance } from '@/lib/db';
 import { logRoute } from '@/lib/logger';
+import { requireAuth } from '@/lib/server-auth';
 
 // GET attendance records
 export const GET = logRoute(async function GET(request: NextRequest) {
+  const caller = requireAuth(request);
+  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const { searchParams } = new URL(request.url);
     const courseId = searchParams.get('courseId');
