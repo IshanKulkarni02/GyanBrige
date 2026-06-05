@@ -40,13 +40,16 @@ export const POST = logRoute(async function POST(request: NextRequest) {
       );
     }
 
-    // Verify course exists
+    // Verify course exists and caller owns it (unless admin)
     const course = courses.getById(courseId);
     if (!course) {
       return NextResponse.json(
         { error: 'Course not found' },
         { status: 404 }
       );
+    }
+    if (caller.role !== 'admin' && course.teacherId !== caller.id) {
+      return NextResponse.json({ error: 'Forbidden — you are not the teacher of this course' }, { status: 403 });
     }
 
     // Get current lecture count for order
