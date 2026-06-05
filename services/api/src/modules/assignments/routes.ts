@@ -55,6 +55,21 @@ export const registerAssignments: FastifyPluginAsync = async (app) => {
   app.get('/course/:courseId', async (req) => {
     const me = await requireAuth(req);
     const { courseId } = req.params as { courseId: string };
+    // Verify caller is enrolled or teaches this course
+    const isAdmin = me.roles.includes(Role.ADMIN) || me.roles.includes(Role.STAFF);
+    if (!isAdmin) {
+      const access = await prisma.course.findFirst({
+        where: {
+          id: courseId,
+          OR: [
+            { enrollments: { some: { userId: me.id } } },
+            { teachers: { some: { id: me.id } } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!access) throw new AppError(403, 'FORBIDDEN', 'Not enrolled in this course');
+    }
     return prisma.assignment.findMany({
       where: { courseId },
       include: {
@@ -162,9 +177,19 @@ export const registerAssignments: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/submissions/:id/grade', async (req) => {
-    await requireRole(req, Role.TEACHER, Role.ADMIN, Role.STAFF);
+    const me = await requireRole(req, Role.TEACHER, Role.ADMIN, Role.STAFF);
     const { id } = req.params as { id: string };
     const body = gradeSchema.parse(req.body);
+    // Verify the submission belongs to a course this teacher owns
+    if (!me.roles.includes(Role.ADMIN) && !me.roles.includes(Role.STAFF)) {
+      const sub = await prisma.submission.findUnique({
+        where: { id },
+        include: { assignment: { include: { course: { include: { teachers: { select: { id: true } } } } } } },
+      });
+      if (!sub) throw new AppError(404, 'NOT_FOUND', 'Submission not found');
+      if (!sub.assignment.course.teachers.some((t) => t.id === me.id))
+        throw new AppError(403, 'FORBIDDEN', 'Not assigned to this course');
+    }
     return prisma.submission.update({
       where: { id },
       data: { score: body.score, feedback: body.feedback, status: SubmissionStatus.GRADED },

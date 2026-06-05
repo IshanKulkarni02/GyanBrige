@@ -63,8 +63,20 @@ export const registerNotices: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/', async (req) => {
-    await requireRole(req, Role.TEACHER, Role.ADMIN, Role.STAFF, Role.CLUB_LEAD);
+    const me = await requireRole(req, Role.TEACHER, Role.ADMIN, Role.STAFF, Role.CLUB_LEAD);
     const body = createSchema.parse(req.body);
+    // CLUB_LEAD may only post notices scoped to clubs they actually lead
+    if (me.roles.includes(Role.CLUB_LEAD) && !me.roles.includes(Role.ADMIN) && !me.roles.includes(Role.STAFF)) {
+      if (body.scope === NoticeScope.CLUB && body.targetId) {
+        const leads = await prisma.club.findFirst({
+          where: { id: body.targetId, leads: { some: { id: me.id } } },
+          select: { id: true },
+        });
+        if (!leads) throw new AppError(403, 'FORBIDDEN', 'You do not lead this club');
+      } else if (body.scope !== NoticeScope.COURSE) {
+        throw new AppError(403, 'FORBIDDEN', 'Club leads can only post to their own club or their course');
+      }
+    }
     return prisma.notice.create({ data: body });
   });
 

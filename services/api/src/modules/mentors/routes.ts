@@ -71,7 +71,7 @@ export const registerMentors: FastifyPluginAsync = async (app) => {
         kind: 'MENTOR_MATCH',
         name: 'Mentor request',
         schema: { fields: [{ id: 'note', type: 'long', label: 'Why?', required: false }] } as never,
-        workflow: { steps: [{ id: 'approve', approverRole: 'TEACHER' }] } as never,
+        workflow: { steps: [{ id: 'approve', approverRole: Role.TEACHER }] } as never,
       },
       update: {},
     });
