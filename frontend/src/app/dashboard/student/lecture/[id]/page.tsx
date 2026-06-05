@@ -138,21 +138,27 @@ export default function LecturePlayerPage() {
   useEffect(() => {
     if (attentionRef.current) clearInterval(attentionRef.current);
     if (videoDuration === 0) return;
-    // Fetch policy for check interval
-    let intervalMs = 15 * 60 * 1000; // default 15 min
+
+    const startInterval = (ms: number) => {
+      attentionRef.current = setInterval(() => {
+        if (!videoRef.current?.paused) {
+          videoRef.current?.pause();
+          setAttentionTimer(30);
+          setAttentionPrompt(true);
+        }
+      }, ms);
+    };
+
+    const DEFAULT_MS = 15 * 60 * 1000;
     if (lecture?.courseId) {
       authFetch(`/api/attendance/policy?courseId=${lecture.courseId}`)
         .then(r => r.json())
-        .then(d => { if (d.policy?.webcamCheckInterval) intervalMs = d.policy.webcamCheckInterval * 60 * 1000; })
-        .catch(() => {});
+        .then(d => startInterval(d.policy?.webcamCheckInterval ? d.policy.webcamCheckInterval * 60 * 1000 : DEFAULT_MS))
+        .catch(() => startInterval(DEFAULT_MS));
+    } else {
+      startInterval(DEFAULT_MS);
     }
-    attentionRef.current = setInterval(() => {
-      if (!videoRef.current?.paused) {
-        videoRef.current?.pause();
-        setAttentionTimer(30);
-        setAttentionPrompt(true);
-      }
-    }, intervalMs);
+
     return () => { if (attentionRef.current) clearInterval(attentionRef.current); };
   }, [videoDuration, lecture?.courseId]);
 
