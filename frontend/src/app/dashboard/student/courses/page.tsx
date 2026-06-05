@@ -42,6 +42,8 @@ export default function MyCoursesPage() {
         authFetch(`/api/courses?userId=${userId}`),
         authFetch(`/api/enrollments?userId=${userId}`),
       ]);
+      if (!coursesRes.ok) throw new Error(`Courses API error: ${coursesRes.status}`);
+      if (!enrollmentsRes.ok) throw new Error(`Enrollments API error: ${enrollmentsRes.status}`);
       const { courses: allCourses } = await coursesRes.json();
       const { enrollments }        = await enrollmentsRes.json();
 

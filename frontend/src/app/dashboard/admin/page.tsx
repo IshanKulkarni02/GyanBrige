@@ -39,6 +39,8 @@ export default function AdminDashboard() {
         fetch('/api/users', { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
         fetch('/api/courses', { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
       ]);
+      if (!usersRes.ok) throw new Error(`Users API error: ${usersRes.status}`);
+      if (!coursesRes.ok) throw new Error(`Courses API error: ${coursesRes.status}`);
       const { users: allUsers } = await usersRes.json();
       const { courses: allCourses } = await coursesRes.json();
       const userList: UserRow[] = allUsers ?? [];

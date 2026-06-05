@@ -51,6 +51,14 @@ export default function TakeTest() {
     return () => clearInterval(t);
   }, [att]);
 
+  // Auto-submit when timer reaches 0
+  useEffect(() => {
+    if (remaining === 0 && att && !busy) {
+      void submit();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remaining]);
+
   useEffect(() => {
     if (!att || Platform.OS !== 'web') return;
     const reportEvt = (type: 'TAB_BLUR' | 'COPY' | 'PASTE' | 'FULLSCREEN_EXIT') => {

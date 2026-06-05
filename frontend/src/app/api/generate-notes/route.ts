@@ -223,7 +223,8 @@ Notes:`;
     let notes = '';
 
     if (useLocalAI) {
-      const response = await fetch('http://localhost:11434/api/generate', {
+      const ollamaBase = process.env.OLLAMA_API_URL ?? 'http://localhost:11434';
+      const response = await fetch(`${ollamaBase}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: ollamaModel, prompt, stream: false }),
