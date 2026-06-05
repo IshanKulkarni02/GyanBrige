@@ -27,7 +27,8 @@ export default function StudentAttendancePage() {
   useEffect(() => {
     const stored = localStorage.getItem('user');
     if (!stored) { router.push('/login'); return; }
-    const u = JSON.parse(stored);
+    let u;
+    try { u = JSON.parse(stored); } catch { localStorage.removeItem('user'); router.push('/login'); return; }
     if (u.role !== 'student') { router.push('/login'); return; }
     load(u.id);
   }, [router]);

@@ -51,7 +51,8 @@ export default function TeacherAttendancePage() {
   useEffect(() => {
     const stored = localStorage.getItem('user');
     if (!stored) { router.push('/login'); return; }
-    const u = JSON.parse(stored);
+    let u;
+    try { u = JSON.parse(stored); } catch { localStorage.removeItem('user'); router.push('/login'); return; }
     if (u.role !== 'teacher') { router.push('/login'); return; }
     userRef.current = u;
     authFetch(`/api/courses?teacherId=${u.id}`).then(r=>r.json()).then(d=>{

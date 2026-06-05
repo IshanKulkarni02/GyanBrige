@@ -34,7 +34,8 @@ export default function MacAssignPage() {
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
-    if (!stored || JSON.parse(stored).role !== 'admin') {
+    let _parsedAdmin; try { _parsedAdmin = JSON.parse(stored); } catch { _parsedAdmin = null; }
+      if (!stored || !_parsedAdmin || _parsedAdmin.role !== 'admin') {
       router.push('/login');
       return;
     }
