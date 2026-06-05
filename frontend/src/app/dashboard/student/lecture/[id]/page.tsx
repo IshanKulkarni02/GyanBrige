@@ -45,6 +45,15 @@ export default function LecturePlayerPage() {
   const [currentTime,   setCurrentTime]   = useState(0);
   const [activeChapter, setActiveChapter] = useState(0);
 
+  // Online attendance: track watch progress + periodic attention check
+  const [watchedPct,      setWatchedPct]      = useState(0);       // % of video watched
+  const [onlineCheckedIn, setOnlineCheckedIn] = useState(false);   // sent online checkin
+  const [attentionPrompt, setAttentionPrompt] = useState(false);   // show "are you still watching?" modal
+  const [attentionTimer,  setAttentionTimer]  = useState(0);       // countdown seconds
+  const watchedSecsRef   = useRef<Set<number>>(new Set());
+  const attentionRef     = useRef<ReturnType<typeof setInterval>|null>(null);
+  const attentionCountRef = useRef<ReturnType<typeof setInterval>|null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -88,6 +97,83 @@ export default function LecturePlayerPage() {
     videoRef.current.play();
   };
 
+  // ── Track video seconds watched ────────────────────────────────────────────
+  const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const t = Math.floor(e.currentTarget.currentTime);
+    setCurrentTime(e.currentTarget.currentTime);
+    watchedSecsRef.current.add(t);
+    if (videoDuration > 0) {
+      const pct = Math.round((watchedSecsRef.current.size / videoDuration) * 100);
+      setWatchedPct(pct);
+      // Auto online check-in when 80% watched
+      if (pct >= 80 && !onlineCheckedIn && user && lecture?.courseId) {
+        setOnlineCheckedIn(true);
+        checkInOnline();
+      }
+    }
+  };
+
+  const checkInOnline = async () => {
+    if (!user || !lecture) return;
+    try {
+      // Find active session for this course
+      const r = await authFetch(`/api/attendance/sessions?courseId=${lecture.courseId}`);
+      const d = await r.json();
+      const active = (d.sessions ?? []).find((s: { status: string }) => s.status === 'active');
+      if (active) {
+        await authFetch(`/api/attendance/sessions/${active.id}/checkin`, {
+          method: 'POST',
+          body: JSON.stringify({ studentId: user.id, method: 'online', status: 'remote', proofType: 'watch_progress' }),
+        });
+        toast.success('📺 Online attendance recorded (80% watched)');
+      }
+    } catch { /* silent — they can still be marked manually */ }
+  };
+
+  // ── Periodic attention check (every N minutes) ──────────────────────────────
+  useEffect(() => {
+    if (attentionRef.current) clearInterval(attentionRef.current);
+    if (videoDuration === 0) return;
+    // Fetch policy for check interval
+    let intervalMs = 15 * 60 * 1000; // default 15 min
+    if (lecture?.courseId) {
+      authFetch(`/api/attendance/policy?courseId=${lecture.courseId}`)
+        .then(r => r.json())
+        .then(d => { if (d.policy?.webcamCheckInterval) intervalMs = d.policy.webcamCheckInterval * 60 * 1000; })
+        .catch(() => {});
+    }
+    attentionRef.current = setInterval(() => {
+      if (!videoRef.current?.paused) {
+        videoRef.current?.pause();
+        setAttentionTimer(30);
+        setAttentionPrompt(true);
+      }
+    }, intervalMs);
+    return () => { if (attentionRef.current) clearInterval(attentionRef.current); };
+  }, [videoDuration, lecture?.courseId]);
+
+  useEffect(() => {
+    if (attentionCountRef.current) clearInterval(attentionCountRef.current);
+    if (!attentionPrompt) return;
+    attentionCountRef.current = setInterval(() => {
+      setAttentionTimer(prev => {
+        if (prev <= 1) {
+          clearInterval(attentionCountRef.current!);
+          setAttentionPrompt(false);
+          // Missed check — don't penalize, just dismiss
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => { if (attentionCountRef.current) clearInterval(attentionCountRef.current); };
+  }, [attentionPrompt]);
+
+  const confirmAttention = () => {
+    setAttentionPrompt(false);
+    videoRef.current?.play();
+    toast.success('✓ Attention confirmed');
+  };
+
   const markAsComplete = async () => {
     if (!user || !lecture || !course) return;
     try {
@@ -129,6 +215,22 @@ export default function LecturePlayerPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Attention check modal */}
+      {attentionPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="glass rounded-2xl p-8 text-center max-w-sm w-full">
+            <div className="text-5xl mb-4">👁️</div>
+            <h2 className="text-xl font-bold mb-2">Are you still watching?</h2>
+            <p className="text-white/60 text-sm mb-4">Click confirm to continue. Attendance requires your attention.</p>
+            <div className="text-3xl font-mono text-amber-400 mb-5">{attentionTimer}s</div>
+            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-5">
+              <div className="h-full bg-amber-500 rounded-full transition-all" style={{width:`${(attentionTimer/30)*100}%`}} />
+            </div>
+            <button onClick={confirmAttention} className="btn-primary w-full py-3">✓ Yes, I&apos;m here</button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="glass border-b border-white/10 p-4 shrink-0">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
@@ -157,7 +259,7 @@ export default function LecturePlayerPage() {
                 className="w-full h-full"
                 controls
                 controlsList="nodownload"
-                onTimeUpdate={e => setCurrentTime(e.currentTarget.currentTime)}
+                onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={e => setVideoDuration(e.currentTarget.duration)}
               />
             ) : (
@@ -187,6 +289,19 @@ export default function LecturePlayerPage() {
               </div>
             )}
           </div>
+
+          {/* Watch progress bar */}
+          {videoDuration > 0 && (
+            <div className="px-5 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${watchedPct>=80?'bg-emerald-500':'bg-purple-500'}`} style={{width:`${watchedPct}%`}} />
+                </div>
+                <span className="text-xs text-white/40 shrink-0">{watchedPct}% watched</span>
+                {watchedPct>=80 && onlineCheckedIn && <span className="text-xs text-emerald-400 shrink-0">📺 Attendance recorded</span>}
+              </div>
+            </div>
+          )}
 
           {/* Mobile tab switcher */}
           <div className="lg:hidden flex border-t border-white/10 overflow-x-auto">

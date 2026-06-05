@@ -62,9 +62,62 @@ export interface AttendanceRecord {
   id: string;
   courseId: string;
   date: string;
-  records: { [studentId: string]: 'present' | 'absent' | 'late' };
+  records: { [studentId: string]: 'present' | 'absent' | 'late' | 'remote' };
   markedBy: string;
   createdAt: string;
+}
+
+/** A live class session (one per lecture/date). Drives QR, network, and online attendance. */
+export interface AttendanceSession {
+  id: string;
+  courseId: string;
+  lectureId?: string;
+  date: string;
+  title: string;
+  /** 'in_person' | 'online' */
+  type: string;
+  /** 'active' | 'ended' */
+  status: string;
+  /** JSON array: ['manual','network','qr','online'] */
+  methods: string[];
+  qrToken?: string;
+  qrExpiresAt?: string;
+  createdBy: string;
+  createdAt: string;
+  endedAt?: string;
+}
+
+/** Per-course rules for attendance. */
+export interface AttendancePolicy {
+  id: string;
+  courseId: string;
+  /** Minimum % required to pass */
+  minAttendancePercent: number;
+  /** Max % of sessions allowed remotely */
+  remoteAllowPercent: number;
+  /** Require proof for online attendance */
+  requireProofForOnline: boolean;
+  /** 'webcam' | 'quiz' | 'either' | 'none' */
+  proofType: string;
+  /** Minutes between webcam attention checks */
+  webcamCheckInterval: number;
+  /** JSON array of allowed methods */
+  allowedMethods: string[];
+  updatedAt: string;
+}
+
+/** Individual student check-in for a session. */
+export interface AttendanceCheckin {
+  id: string;
+  sessionId: string;
+  courseId: string;
+  studentId: string;
+  /** 'manual' | 'network' | 'qr' | 'online' */
+  method: string;
+  /** 'present' | 'remote' | 'late' */
+  status: string;
+  proofType?: string;
+  checkedInAt: string;
 }
 
 export interface Invite {
@@ -153,6 +206,46 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS attendance_sessions (
+    id          TEXT PRIMARY KEY,
+    courseId    TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    lectureId   TEXT REFERENCES lectures(id) ON DELETE SET NULL,
+    date        TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    type        TEXT NOT NULL DEFAULT 'in_person',
+    status      TEXT NOT NULL DEFAULT 'active',
+    methods     TEXT NOT NULL DEFAULT '["manual"]',
+    qrToken     TEXT UNIQUE,
+    qrExpiresAt TEXT,
+    createdBy   TEXT NOT NULL,
+    createdAt   TEXT NOT NULL,
+    endedAt     TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS attendance_policies (
+    id                    TEXT PRIMARY KEY,
+    courseId              TEXT UNIQUE NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    minAttendancePercent  INTEGER NOT NULL DEFAULT 75,
+    remoteAllowPercent    INTEGER NOT NULL DEFAULT 30,
+    requireProofForOnline INTEGER NOT NULL DEFAULT 1,
+    proofType             TEXT NOT NULL DEFAULT 'either',
+    webcamCheckInterval   INTEGER NOT NULL DEFAULT 15,
+    allowedMethods        TEXT NOT NULL DEFAULT '["manual","network","qr","online"]',
+    updatedAt             TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS attendance_checkins (
+    id          TEXT PRIMARY KEY,
+    sessionId   TEXT NOT NULL REFERENCES attendance_sessions(id) ON DELETE CASCADE,
+    courseId    TEXT NOT NULL,
+    studentId   TEXT NOT NULL,
+    method      TEXT NOT NULL DEFAULT 'manual',
+    status      TEXT NOT NULL DEFAULT 'present',
+    proofType   TEXT,
+    checkedInAt TEXT NOT NULL,
+    UNIQUE(sessionId, studentId)
   );
 
   CREATE TABLE IF NOT EXISTS quizzes (
@@ -549,4 +642,136 @@ export const quizzes = {
   },
 };
 
-export default { users, courses, lectures, enrollments, attendance, invites, settings, quizzes };
+// ─── Attendance sessions ──────────────────────────────────────────────────────
+
+function parseSession(row: Record<string, unknown>): AttendanceSession {
+  return {
+    ...(row as unknown as AttendanceSession),
+    methods: JSON.parse((row.methods as string) || '["manual"]'),
+  };
+}
+
+export const attendanceSessions = {
+  getById(id: string): AttendanceSession | undefined {
+    const row = db.prepare('SELECT * FROM attendance_sessions WHERE id=?').get(id) as Record<string, unknown> | undefined;
+    return row ? parseSession(row) : undefined;
+  },
+  getByCourse(courseId: string): AttendanceSession[] {
+    return (db.prepare('SELECT * FROM attendance_sessions WHERE courseId=? ORDER BY createdAt DESC').all(courseId) as Record<string, unknown>[]).map(parseSession);
+  },
+  getActive(courseId: string): AttendanceSession | undefined {
+    const row = db.prepare("SELECT * FROM attendance_sessions WHERE courseId=? AND status='active' ORDER BY createdAt DESC LIMIT 1").get(courseId) as Record<string, unknown> | undefined;
+    return row ? parseSession(row) : undefined;
+  },
+  getByQrToken(token: string): AttendanceSession | undefined {
+    const row = db.prepare('SELECT * FROM attendance_sessions WHERE qrToken=?').get(token) as Record<string, unknown> | undefined;
+    return row ? parseSession(row) : undefined;
+  },
+  create(data: Omit<AttendanceSession, 'id' | 'createdAt'>): AttendanceSession {
+    const id = generateId();
+    const createdAt = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO attendance_sessions (id,courseId,lectureId,date,title,type,status,methods,qrToken,qrExpiresAt,createdBy,createdAt,endedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
+    ).run(id, data.courseId, data.lectureId ?? null, data.date, data.title, data.type, data.status,
+      JSON.stringify(data.methods), data.qrToken ?? null, data.qrExpiresAt ?? null, data.createdBy, createdAt, data.endedAt ?? null);
+    return { ...data, id, createdAt };
+  },
+  update(id: string, updates: Partial<AttendanceSession>): AttendanceSession | null {
+    const existing = attendanceSessions.getById(id);
+    if (!existing) return null;
+    const merged = { ...existing, ...updates };
+    db.prepare(
+      'UPDATE attendance_sessions SET status=?,methods=?,qrToken=?,qrExpiresAt=?,endedAt=?,title=?,type=? WHERE id=?'
+    ).run(merged.status, JSON.stringify(merged.methods), merged.qrToken ?? null, merged.qrExpiresAt ?? null, merged.endedAt ?? null, merged.title, merged.type, id);
+    return merged;
+  },
+};
+
+// ─── Attendance policies ──────────────────────────────────────────────────────
+
+function parsePolicy(row: Record<string, unknown>): AttendancePolicy {
+  return {
+    ...(row as unknown as AttendancePolicy),
+    requireProofForOnline: !!(row.requireProofForOnline as number),
+    allowedMethods: JSON.parse((row.allowedMethods as string) || '["manual","network","qr","online"]'),
+  };
+}
+
+export const attendancePolicies = {
+  getByCourse(courseId: string): AttendancePolicy | undefined {
+    const row = db.prepare('SELECT * FROM attendance_policies WHERE courseId=?').get(courseId) as Record<string, unknown> | undefined;
+    return row ? parsePolicy(row) : undefined;
+  },
+  upsert(courseId: string, data: Partial<Omit<AttendancePolicy, 'id' | 'courseId' | 'updatedAt'>>): AttendancePolicy {
+    const existing = attendancePolicies.getByCourse(courseId);
+    const defaults: Omit<AttendancePolicy, 'id' | 'courseId' | 'updatedAt'> = {
+      minAttendancePercent: 75, remoteAllowPercent: 30, requireProofForOnline: true,
+      proofType: 'either', webcamCheckInterval: 15, allowedMethods: ['manual', 'network', 'qr', 'online'],
+    };
+    const merged = { ...defaults, ...existing ? {
+      minAttendancePercent: existing.minAttendancePercent,
+      remoteAllowPercent: existing.remoteAllowPercent,
+      requireProofForOnline: existing.requireProofForOnline,
+      proofType: existing.proofType,
+      webcamCheckInterval: existing.webcamCheckInterval,
+      allowedMethods: existing.allowedMethods,
+    } : {}, ...data };
+    const updatedAt = new Date().toISOString();
+    if (existing) {
+      db.prepare(
+        'UPDATE attendance_policies SET minAttendancePercent=?,remoteAllowPercent=?,requireProofForOnline=?,proofType=?,webcamCheckInterval=?,allowedMethods=?,updatedAt=? WHERE courseId=?'
+      ).run(merged.minAttendancePercent, merged.remoteAllowPercent, merged.requireProofForOnline ? 1 : 0,
+        merged.proofType, merged.webcamCheckInterval, JSON.stringify(merged.allowedMethods), updatedAt, courseId);
+      return { ...existing, ...merged, updatedAt };
+    }
+    const id = generateId();
+    db.prepare(
+      'INSERT INTO attendance_policies (id,courseId,minAttendancePercent,remoteAllowPercent,requireProofForOnline,proofType,webcamCheckInterval,allowedMethods,updatedAt) VALUES (?,?,?,?,?,?,?,?,?)'
+    ).run(id, courseId, merged.minAttendancePercent, merged.remoteAllowPercent, merged.requireProofForOnline ? 1 : 0,
+      merged.proofType, merged.webcamCheckInterval, JSON.stringify(merged.allowedMethods), updatedAt);
+    return { id, courseId, ...merged, updatedAt };
+  },
+};
+
+// ─── Attendance check-ins ─────────────────────────────────────────────────────
+
+export const attendanceCheckins = {
+  getBySession(sessionId: string): AttendanceCheckin[] {
+    return db.prepare('SELECT * FROM attendance_checkins WHERE sessionId=? ORDER BY checkedInAt ASC').all(sessionId) as AttendanceCheckin[];
+  },
+  getByStudent(studentId: string, courseId: string): AttendanceCheckin[] {
+    return db.prepare('SELECT * FROM attendance_checkins WHERE studentId=? AND courseId=? ORDER BY checkedInAt DESC').all(studentId, courseId) as AttendanceCheckin[];
+  },
+  upsert(data: Omit<AttendanceCheckin, 'id'>): AttendanceCheckin {
+    const existing = db.prepare('SELECT * FROM attendance_checkins WHERE sessionId=? AND studentId=?').get(data.sessionId, data.studentId) as AttendanceCheckin | undefined;
+    if (existing) {
+      db.prepare('UPDATE attendance_checkins SET method=?,status=?,proofType=?,checkedInAt=? WHERE id=?')
+        .run(data.method, data.status, data.proofType ?? null, data.checkedInAt, existing.id);
+      return { ...existing, ...data };
+    }
+    const id = generateId();
+    db.prepare(
+      'INSERT INTO attendance_checkins (id,sessionId,courseId,studentId,method,status,proofType,checkedInAt) VALUES (?,?,?,?,?,?,?,?)'
+    ).run(id, data.sessionId, data.courseId, data.studentId, data.method, data.status, data.proofType ?? null, data.checkedInAt);
+    return { ...data, id };
+  },
+  getStudentSummary(courseId: string, studentId: string): { total: number; present: number; remote: number; percentage: number } {
+    // Count from both checkins and legacy attendance records
+    const sessions = attendanceSessions.getByCourse(courseId).filter(s => s.status === 'ended');
+    let present = 0, remote = 0;
+    const sessionIds = sessions.map(s => s.id);
+    if (sessionIds.length) {
+      const rows = db.prepare(
+        `SELECT status FROM attendance_checkins WHERE studentId=? AND sessionId IN (${sessionIds.map(() => '?').join(',')})`
+      ).all(studentId, ...sessionIds) as { status: string }[];
+      for (const r of rows) {
+        if (r.status === 'present' || r.status === 'late') present++;
+        if (r.status === 'remote') remote++;
+      }
+    }
+    const total = sessions.length;
+    return { total, present, remote, percentage: total > 0 ? Math.round(((present + remote) / total) * 100) : 0 };
+  },
+};
+
+export default { users, courses, lectures, enrollments, attendance, attendanceSessions, attendancePolicies, attendanceCheckins, invites, settings, quizzes };
