@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, FlatList, ActivityIndicator, Alert } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, router } from 'expo-router';
 import { api } from '../../../lib/api';
 import { colors, spacing, radius } from '../../../lib/theme';
 
@@ -120,11 +120,10 @@ export default function CourseDoubts() {
                     {item.aiCitations.map((cit, i) => (
                       <Pressable
                         key={i}
-                        onPress={() => {
-                          const mins = Math.floor(cit.startSec / 60);
-                          const secs = cit.startSec % 60;
-                          Alert.alert('Lecture reference', `Lecture ${cit.lectureId.slice(0, 8)}… at ${mins}:${String(secs).padStart(2, '0')}`);
-                        }}
+                        onPress={() => router.push({
+                          pathname: '/(app)/lectures/[id]',
+                          params: { id: cit.lectureId, t: String(cit.startSec) },
+                        } as never)}
                       >
                         <Text style={{ color: c.primary, fontSize: 11 }}>
                           ↗ Lecture · {Math.floor(cit.startSec / 60)}:{String(cit.startSec % 60).padStart(2, '0')}

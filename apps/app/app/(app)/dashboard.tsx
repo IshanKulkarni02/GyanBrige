@@ -41,8 +41,14 @@ export default function Dashboard() {
       const today = new Date().getDay();
       const todaySlots = (timetable ?? []).filter((s) => s.weekday === today);
       const now = new Date();
-      const nowStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      const nextClass = todaySlots.find((s) => s.startTime >= nowStr) ?? null;
+      // Convert current time to minutes-since-midnight for safe numeric comparison
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const toMinutes = (t: string) => {
+        const [h = '0', m = '0'] = t.split(':');
+        return parseInt(h, 10) * 60 + parseInt(m, 10);
+      };
+      const sortedSlots = [...todaySlots].sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
+      const nextClass = sortedSlots.find((s) => toMinutes(s.startTime) >= nowMinutes) ?? null;
 
       setAnalytics({
         attendanceRatio: (gami?.stats.attendance ?? 0) / 100,

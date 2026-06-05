@@ -68,12 +68,13 @@ export default function LectureDetail() {
   const downloadRecording = async () => {
     setBusy('download');
     setDownloadProgress(0);
+    let dest: string | null = null;
     try {
       const { url, filename, sizeBytes } = await api<{ url: string; filename: string; sizeBytes: number | null; expiresIn: number }>(
         `/api/lectures/${lec!.id}/download-url`,
       );
-      const dest = `${FileSystem.documentDirectory}lectures/${filename}`;
-      // Ensure directory exists
+      dest = `${FileSystem.documentDirectory}lectures/${filename}`;
+      // Ensure directory exists (idempotent on subsequent calls)
       await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}lectures/`, { intermediates: true }).catch(() => {});
       const downloadResumable = FileSystem.createDownloadResumable(
         url,
@@ -90,8 +91,12 @@ export default function LectureDetail() {
         setDownloadedPath(result.uri);
         const mb = sizeBytes ? ` (${(sizeBytes / 1_000_000).toFixed(1)} MB)` : '';
         Alert.alert('Downloaded', `Saved to device${mb}. Available offline.`);
+      } else {
+        await FileSystem.deleteAsync(dest, { idempotent: true }).catch(() => {});
+        Alert.alert('Download failed', `Server returned status ${result?.status ?? 'unknown'}`);
       }
     } catch (e) {
+      if (dest) await FileSystem.deleteAsync(dest, { idempotent: true }).catch(() => {});
       Alert.alert('Download failed', (e as Error).message);
     } finally {
       setBusy(null);

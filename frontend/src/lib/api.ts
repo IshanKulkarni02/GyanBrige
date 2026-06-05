@@ -81,12 +81,16 @@ async function fetchAPI<T>(
     },
   });
 
-  const data = await res.json();
-
   if (!res.ok) {
-    throw new Error(data.error || 'API request failed');
+    if (res.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error || `Request failed (${res.status})`);
   }
 
+  const data = await res.json();
   return data;
 }
 

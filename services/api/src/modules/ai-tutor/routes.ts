@@ -143,7 +143,9 @@ export const registerAiTutor: FastifyPluginAsync = async (app) => {
     const me = await requireAuth(req);
     const { sessionId } = req.params as { sessionId: string };
     const { ObjectId } = await import('mongodb');
-    const session = await tutorSessions().findOne({ _id: new ObjectId(sessionId) as never, studentId: me.id });
+    let oid: InstanceType<typeof ObjectId>;
+    try { oid = new ObjectId(sessionId); } catch { throw new AppError(400, 'BAD_ID', 'Invalid session ID'); }
+    const session = await tutorSessions().findOne({ _id: oid as never, studentId: me.id });
     if (!session) throw new AppError(404, 'NOT_FOUND', 'Session not found');
     return session;
   });
@@ -162,7 +164,9 @@ export const registerAiTutor: FastifyPluginAsync = async (app) => {
     const { question, courseIds: reqCourseIds } = z.object({ question: z.string().min(2), courseIds: z.array(z.string().uuid()).optional() }).parse(req.body);
 
     const { ObjectId } = await import('mongodb');
-    const session = await tutorSessions().findOne({ _id: new ObjectId(sessionId) as never, studentId: me.id });
+    let oid: InstanceType<typeof ObjectId>;
+    try { oid = new ObjectId(sessionId); } catch { throw new AppError(400, 'BAD_ID', 'Invalid session ID'); }
+    const session = await tutorSessions().findOne({ _id: oid as never, studentId: me.id });
     if (!session) throw new AppError(404, 'NOT_FOUND', 'Session not found');
 
     const enrolled = await prisma.enrollment.findMany({ where: { userId: me.id }, select: { courseId: true } });
@@ -172,7 +176,13 @@ export const registerAiTutor: FastifyPluginAsync = async (app) => {
       throw new AppError(403, 'NO_COURSES', 'Enrol in a course before using the tutor');
     }
 
-    const effectiveIds = scopedIds.length > 0 ? scopedIds : allowedIds;
+    // Admins with no enrollment get all courses as context so retrieval works
+    const isAdmin = me.roles.includes(Role.ADMIN) || me.roles.includes(Role.STAFF);
+    let effectiveIds = scopedIds.length > 0 ? scopedIds : allowedIds;
+    if (effectiveIds.length === 0 && isAdmin) {
+      const all = await prisma.course.findMany({ select: { id: true }, take: 50 });
+      effectiveIds = all.map((c) => c.id);
+    }
     const [hits, profile] = await Promise.all([retrieve(question, effectiveIds, 5), getLearningProfile(me.id, effectiveIds)]);
     const systemPrompt = buildSystemPrompt(profile, me.name ?? 'Student');
     const answer = await callLLM(systemPrompt, session.messages, question, hits);
