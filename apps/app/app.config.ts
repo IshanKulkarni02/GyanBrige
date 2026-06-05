@@ -1,5 +1,12 @@
 import type { ExpoConfig } from 'expo/config';
 
+const isProd = process.env.NODE_ENV === 'production';
+const required = (key: string, fallback: string): string => {
+  const val = process.env[key];
+  if (!val && isProd) throw new Error(`Missing required env var ${key} in production build`);
+  return val ?? fallback;
+};
+
 const config: ExpoConfig = {
   name: 'GyanBrige',
   slug: 'gyanbrige',
@@ -36,11 +43,10 @@ const config: ExpoConfig = {
   plugins: ['expo-router', 'expo-secure-store'],
   experiments: { typedRoutes: true },
   extra: {
-    apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000',
-    realtimeUrl: process.env.EXPO_PUBLIC_REALTIME_URL ?? 'ws://localhost:4002',
-    transcriptionUrl:
-      process.env.EXPO_PUBLIC_TRANSCRIPTION_URL ?? 'http://localhost:4001',
-    livekitUrl: process.env.EXPO_PUBLIC_LIVEKIT_URL ?? 'ws://localhost:7880',
+    apiUrl: required('EXPO_PUBLIC_API_URL', 'http://localhost:4000'),
+    realtimeUrl: required('EXPO_PUBLIC_REALTIME_URL', 'ws://localhost:4002'),
+    transcriptionUrl: required('EXPO_PUBLIC_TRANSCRIPTION_URL', 'http://localhost:4001'),
+    livekitUrl: required('EXPO_PUBLIC_LIVEKIT_URL', 'ws://localhost:7880'),
   },
 };
 
