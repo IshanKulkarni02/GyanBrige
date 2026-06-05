@@ -7,6 +7,7 @@ import { promisify } from 'util';
 import { tmpdir } from 'os';
 import path from 'path';
 import { Readable } from 'stream';
+import { requireAuth } from '@/lib/server-auth';
 import { logRoute, withRetry } from '@/lib/logger';
 
 export const maxDuration = 3600;
@@ -109,6 +110,7 @@ async function transcribeAudio(audioFile: File, openaiKey: string, language = 'a
 }
 
 export const POST = logRoute(async function POST(request: NextRequest) {
+  if (!requireAuth(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     // Read AI settings from DB (server-side); fall back to env var
     const storedSettings = dbSettings.getAll();

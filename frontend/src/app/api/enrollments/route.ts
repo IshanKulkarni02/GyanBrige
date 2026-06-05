@@ -55,8 +55,10 @@ export const GET = logRoute(async function GET(request: NextRequest) {
 }
 );
 
-// POST enroll in a course
+// POST enroll in a course — must be the student themselves or a teacher/admin
 export const POST = logRoute(async function POST(request: NextRequest) {
+  const caller = requireAuth(request);
+  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const { userId, courseId } = await request.json();
 
@@ -65,6 +67,10 @@ export const POST = logRoute(async function POST(request: NextRequest) {
         { error: 'userId and courseId are required' },
         { status: 400 }
       );
+    }
+
+    if (caller.role === 'student' && caller.id !== userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const enrollment = enrollments.enroll(userId, courseId);

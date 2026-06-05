@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mkdir, writeFile, readFile, unlink, stat, readdir } from 'fs/promises';
 import { createWriteStream } from 'fs';
 import path from 'path';
+import { requireAuth } from '@/lib/server-auth';
 import { logRoute } from '@/lib/logger';
 
 export const maxDuration = 3600;
@@ -10,6 +11,7 @@ const UPLOADS_DIR = path.join(process.cwd(), 'public', 'uploads');
 const TEMP_DIR    = path.join(process.cwd(), 'tmp', 'uploads');
 
 export const POST = logRoute(async function POST(request: NextRequest) {
+  if (!requireAuth(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const formData = await request.formData();
 

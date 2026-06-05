@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { lectures } from '@/lib/db';
+import { lectures, courses } from '@/lib/db';
+import { requireAuth } from '@/lib/server-auth';
 import { logRoute } from '@/lib/logger';
 
 // GET single lecture
@@ -22,20 +23,23 @@ export const GET = logRoute(async function GET(
 }
 );
 
-// PUT update lecture
+// PUT update lecture — course teacher or admin only
 export const PUT = logRoute(async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const caller = requireAuth(request);
+  if (!caller || caller.role === 'student') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
     const { id } = await params;
-    const body = await request.json();
-
-    const updated = lectures.update(id, body);
-    if (!updated) {
-      return NextResponse.json({ error: 'Lecture not found' }, { status: 404 });
+    const lecture = lectures.getById(id);
+    if (!lecture) return NextResponse.json({ error: 'Lecture not found' }, { status: 404 });
+    if (caller.role !== 'admin') {
+      const course = courses.getById(lecture.courseId);
+      if (course?.teacherId !== caller.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-
+    const body = await request.json();
+    const updated = lectures.update(id, body);
     return NextResponse.json({ success: true, lecture: updated });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to update lecture' }, { status: 500 });
@@ -43,19 +47,22 @@ export const PUT = logRoute(async function PUT(
 }
 );
 
-// DELETE lecture
+// DELETE lecture — course teacher or admin only
 export const DELETE = logRoute(async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const caller = requireAuth(request);
+  if (!caller || caller.role === 'student') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
     const { id } = await params;
-    const deleted = lectures.delete(id);
-
-    if (!deleted) {
-      return NextResponse.json({ error: 'Lecture not found' }, { status: 404 });
+    const lecture = lectures.getById(id);
+    if (!lecture) return NextResponse.json({ error: 'Lecture not found' }, { status: 404 });
+    if (caller.role !== 'admin') {
+      const course = courses.getById(lecture.courseId);
+      if (course?.teacherId !== caller.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-
+    lectures.delete(id);
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to delete lecture' }, { status: 500 });

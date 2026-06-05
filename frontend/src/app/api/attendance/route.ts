@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { attendance } from '@/lib/db';
+import { requireAuth, requireAdmin } from '@/lib/server-auth';
 import { logRoute } from '@/lib/logger';
 
 // GET attendance records
@@ -19,6 +20,9 @@ export const GET = logRoute(async function GET(request: NextRequest) {
       return NextResponse.json({ attendance: records });
     }
 
+    if (!requireAdmin(request)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     return NextResponse.json({ attendance: attendance.getAll() });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch attendance' }, { status: 500 });
@@ -26,8 +30,12 @@ export const GET = logRoute(async function GET(request: NextRequest) {
 }
 );
 
-// POST mark attendance
+// POST mark attendance — teachers and admins only
 export const POST = logRoute(async function POST(request: NextRequest) {
+  const caller = requireAuth(request);
+  if (!caller || caller.role === 'student') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   try {
     const body = await request.json();
     const { courseId, date, records, markedBy } = body;

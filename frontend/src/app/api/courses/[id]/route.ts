@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { courses, lectures, enrollments, users } from '@/lib/db';
+import { requireAdmin } from '@/lib/server-auth';
 import { logRoute } from '@/lib/logger';
 
 // GET single course with lectures
@@ -43,11 +44,13 @@ export const GET = logRoute(async function GET(
 }
 );
 
-// PUT update course
+// PUT update course — teachers (own course) and admins only
 export const PUT = logRoute(async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const caller = requireAdmin(request);
+  if (!caller) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
     const { id } = await params;
     const body = await request.json();
@@ -64,11 +67,12 @@ export const PUT = logRoute(async function PUT(
 }
 );
 
-// DELETE course
+// DELETE course — admins only
 export const DELETE = logRoute(async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!requireAdmin(request)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
     const { id } = await params;
     const deleted = courses.delete(id);
