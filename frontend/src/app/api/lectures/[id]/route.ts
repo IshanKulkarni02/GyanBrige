@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { lectures } from '@/lib/db';
 import { logRoute } from '@/lib/logger';
+import { requireAuth } from '@/lib/server-auth';
 
 // GET single lecture
 export const GET = logRoute(async function GET(
@@ -22,11 +23,14 @@ export const GET = logRoute(async function GET(
 }
 );
 
-// PUT update lecture
+// PUT update lecture — teacher/admin only
 export const PUT = logRoute(async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const caller = requireAuth(request);
+  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (caller.role !== 'teacher' && caller.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
     const { id } = await params;
     const body = await request.json();
@@ -43,11 +47,14 @@ export const PUT = logRoute(async function PUT(
 }
 );
 
-// DELETE lecture
+// DELETE lecture — admin only
 export const DELETE = logRoute(async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const caller = requireAuth(request);
+  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (caller.role !== 'admin') return NextResponse.json({ error: 'Forbidden — admins only' }, { status: 403 });
   try {
     const { id } = await params;
     const deleted = lectures.delete(id);
