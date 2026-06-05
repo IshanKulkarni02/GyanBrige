@@ -30,7 +30,7 @@ export const POST = logRoute(async function POST(req: NextRequest, { params }: {
   const existing = attendanceCheckins.getBySession(session.id).find(c => c.studentId === studentId);
   if (existing) {
     const course = courses.getById(session.courseId);
-    return NextResponse.json({ error: 'already', course: course?.name });
+    return NextResponse.json({ error: 'already', course: course?.name }, { status: 409 });
   }
 
   attendanceCheckins.upsert({

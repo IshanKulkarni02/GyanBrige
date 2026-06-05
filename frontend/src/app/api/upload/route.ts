@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mkdir, writeFile, readFile, unlink, stat, readdir } from 'fs/promises';
 import { createWriteStream } from 'fs';
 import path from 'path';
-import { logRoute } from '@/lib/logger';
 import { requireAuth } from '@/lib/server-auth';
+import { logRoute } from '@/lib/logger';
 
 export const maxDuration = 3600;
 

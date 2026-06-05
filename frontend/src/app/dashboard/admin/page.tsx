@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/api';
 
 interface UserRow { id: string; name: string; email: string; role: string; }
 
@@ -36,8 +37,8 @@ export default function AdminDashboard() {
   const loadDashboard = async (me: { id: string; role: string }) => {
     try {
       const [usersRes, coursesRes] = await Promise.all([
-        fetch('/api/users', { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
-        fetch('/api/courses', { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
+        authFetch('/api/users'),
+        authFetch('/api/courses'),
       ]);
       if (!usersRes.ok) throw new Error(`Users API error: ${usersRes.status}`);
       if (!coursesRes.ok) throw new Error(`Courses API error: ${coursesRes.status}`);

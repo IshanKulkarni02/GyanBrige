@@ -138,21 +138,27 @@ export default function LecturePlayerPage() {
   useEffect(() => {
     if (attentionRef.current) clearInterval(attentionRef.current);
     if (videoDuration === 0) return;
-    // Fetch policy for check interval
-    let intervalMs = 15 * 60 * 1000; // default 15 min
+
+    const startInterval = (ms: number) => {
+      attentionRef.current = setInterval(() => {
+        if (!videoRef.current?.paused) {
+          videoRef.current?.pause();
+          setAttentionTimer(30);
+          setAttentionPrompt(true);
+        }
+      }, ms);
+    };
+
+    const DEFAULT_MS = 15 * 60 * 1000;
     if (lecture?.courseId) {
       authFetch(`/api/attendance/policy?courseId=${lecture.courseId}`)
         .then(r => r.json())
-        .then(d => { if (d.policy?.webcamCheckInterval) intervalMs = d.policy.webcamCheckInterval * 60 * 1000; })
-        .catch(() => {});
+        .then(d => startInterval(d.policy?.webcamCheckInterval ? d.policy.webcamCheckInterval * 60 * 1000 : DEFAULT_MS))
+        .catch(() => startInterval(DEFAULT_MS));
+    } else {
+      startInterval(DEFAULT_MS);
     }
-    attentionRef.current = setInterval(() => {
-      if (!videoRef.current?.paused) {
-        videoRef.current?.pause();
-        setAttentionTimer(30);
-        setAttentionPrompt(true);
-      }
-    }, intervalMs);
+
     return () => { if (attentionRef.current) clearInterval(attentionRef.current); };
   }, [videoDuration, lecture?.courseId]);
 
@@ -403,6 +409,7 @@ function QuizPanel({ quizzes, userId }: { quizzes: Quiz[]; userId: string }) {
   const [answers,     setAnswers]     = useState<Record<number, number>>({});
   const [submitted,   setSubmitted]   = useState(false);
   const [submitting,  setSubmitting]  = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [attendanceMarked, setAttendanceMarked] = useState(false);
 
   const openQuiz = async (quiz: Quiz) => {
@@ -423,6 +430,7 @@ function QuizPanel({ quizzes, userId }: { quizzes: Quiz[]; userId: string }) {
   const submitQuiz = async () => {
     if (!activeQuiz) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const r = await authFetch(`/api/quizzes/${activeQuiz.id}/attempt`, {
         method: 'POST',
@@ -437,6 +445,7 @@ function QuizPanel({ quizzes, userId }: { quizzes: Quiz[]; userId: string }) {
       if (d.attendanceCheckin) setAttendanceMarked(true);
     } catch (e) {
       console.error('Quiz submit failed:', e);
+      setSubmitError(e instanceof Error ? e.message : 'Submission failed — please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -597,6 +606,9 @@ function QuizPanel({ quizzes, userId }: { quizzes: Quiz[]; userId: string }) {
               ? `Answer all ${questions.length - answered} remaining question${questions.length - answered !== 1 ? 's' : ''}`
               : '🧠 Submit quiz'}
           </button>
+          {submitError && (
+            <p className="text-red-400 text-xs mt-2 text-center">{submitError}</p>
+          )}
         </div>
       )}
     </div>

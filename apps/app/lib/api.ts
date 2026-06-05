@@ -53,8 +53,11 @@ export async function api<T>(
       _onSessionExpired?.();
       throw new Error('SESSION_EXPIRED');
     }
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
+    const text = await res.text().catch(() => '');
+    let body: { error?: { message?: string } | string } = {};
+    try { body = JSON.parse(text); } catch { /* non-JSON response (e.g. 502 HTML page) */ }
+    const msg = typeof body?.error === 'string' ? body.error : body?.error?.message;
+    throw new Error(msg ?? `HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
 }

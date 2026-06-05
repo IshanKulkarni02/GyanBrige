@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/api';
 
 interface CourseItem { id: string; name: string; description: string; icon: string; color: string; lectureCount: number; }
 
@@ -36,8 +37,8 @@ export default function TeacherDashboard() {
   const loadData = async (me: { id: string; role: string }) => {
     try {
       const [coursesRes, enrollmentsRes] = await Promise.all([
-        fetch(`/api/courses?teacherId=${me.id}`, { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
-        fetch('/api/enrollments', { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
+        authFetch(`/api/courses?teacherId=${me.id}`),
+        authFetch('/api/enrollments'),
       ]);
       if (!coursesRes.ok) throw new Error(`Courses API error: ${coursesRes.status}`);
       if (!enrollmentsRes.ok) throw new Error(`Enrollments API error: ${enrollmentsRes.status}`);

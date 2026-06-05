@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['better-sqlite3'],
   experimental: {
     serverActions: {
-      bodySizeLimit: '25gb',
+      bodySizeLimit: '500mb',
     },
   },
   // Large bodies handled per-route via export const config = { api: { bodyParser: false } }

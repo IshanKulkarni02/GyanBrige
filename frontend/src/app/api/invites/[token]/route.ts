@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { invites } from '@/lib/db';
+import { requireAdmin } from '@/lib/server-auth';
 import { logRoute } from '@/lib/logger';
 
 // GET validate token (used by signup page)
@@ -20,11 +21,12 @@ export const GET = logRoute(async function GET(
 }
 );
 
-// DELETE revoke invite
+// DELETE revoke invite — admins only
 export const DELETE = logRoute(async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  if (!requireAdmin(request)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
     const { token } = await params;
     const deleted = invites.delete(token);

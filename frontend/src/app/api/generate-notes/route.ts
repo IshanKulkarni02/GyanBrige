@@ -8,6 +8,7 @@ import { promisify } from 'util';
 import { tmpdir } from 'os';
 import path from 'path';
 import { Readable } from 'stream';
+import { requireAuth } from '@/lib/server-auth';
 import { logRoute, withRetry } from '@/lib/logger';
 
 export const maxDuration = 3600;

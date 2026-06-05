@@ -18,6 +18,7 @@ export default function StudentDashboard() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -48,6 +49,7 @@ export default function StudentDashboard() {
       setEnrollments(enrollmentsRes.enrollments);
     } catch (error) {
       console.error('Failed to load data:', error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -70,6 +72,24 @@ export default function StudentDashboard() {
         <div className="text-center">
           <div className="text-4xl mb-4 animate-pulse">📚</div>
           <p className="text-white/60">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4">⚠️</div>
+          <p className="text-red-400 font-medium mb-2">Failed to load dashboard</p>
+          <p className="text-white/50 text-sm mb-4">Check your connection and try again.</p>
+          <button
+            onClick={() => { setLoadError(false); setLoading(true); loadData(user.id); }}
+            className="btn-primary text-sm"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
