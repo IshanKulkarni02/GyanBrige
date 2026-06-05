@@ -89,6 +89,10 @@ export default function StudentDashboard() {
             { icon: '🏠', label: 'Dashboard',   href: '/dashboard/student',            active: true },
             { icon: '📚', label: 'My Courses',  href: '/dashboard/student/courses' },
             { icon: '📊', label: 'Attendance',  href: '/dashboard/student/attendance' },
+            { icon: '📅', label: 'Timetable',   href: '/dashboard/student/timetable' },
+            { icon: '📝', label: 'Exams',       href: '/dashboard/student/exams' },
+            { icon: '⭐', label: 'Feedback',    href: '/dashboard/student/feedback' },
+            { icon: '📢', label: 'Grievances',  href: '/dashboard/student/grievances' },
           ].map((item) => (
             <Link
               key={item.label}

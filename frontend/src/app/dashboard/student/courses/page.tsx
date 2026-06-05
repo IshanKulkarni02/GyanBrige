@@ -88,6 +88,11 @@ export default function MyCoursesPage() {
           {[
             { icon: '🏠', label: 'Dashboard',  href: '/dashboard/student' },
             { icon: '📚', label: 'My Courses', href: '/dashboard/student/courses', active: true },
+            { icon: '📊', label: 'Attendance', href: '/dashboard/student/attendance' },
+            { icon: '📅', label: 'Timetable',  href: '/dashboard/student/timetable' },
+            { icon: '📝', label: 'Exams',      href: '/dashboard/student/exams' },
+            { icon: '⭐', label: 'Feedback',   href: '/dashboard/student/feedback' },
+            { icon: '📢', label: 'Grievances', href: '/dashboard/student/grievances' },
           ].map(item => (
             <Link key={item.label} href={item.href}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl transition ${item.active ? 'bg-emerald-500/20 text-emerald-400' : 'text-white/70 hover:bg-white/5'}`}>
