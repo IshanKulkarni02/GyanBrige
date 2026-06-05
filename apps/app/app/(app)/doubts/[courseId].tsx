@@ -114,6 +114,25 @@ export default function CourseDoubts() {
               >
                 <Text style={{ color: c.textMuted, fontSize: 11, fontWeight: '600' }}>AI DRAFT</Text>
                 <Text style={{ color: c.text, marginTop: spacing.xs }}>{item.aiAnswer}</Text>
+                {item.aiCitations && item.aiCitations.length > 0 && (
+                  <View style={{ marginTop: spacing.xs, gap: 4 }}>
+                    <Text style={{ color: c.textMuted, fontSize: 10, fontWeight: '600' }}>SOURCES</Text>
+                    {item.aiCitations.map((cit, i) => (
+                      <Pressable
+                        key={i}
+                        onPress={() => {
+                          const mins = Math.floor(cit.startSec / 60);
+                          const secs = cit.startSec % 60;
+                          Alert.alert('Lecture reference', `Lecture ${cit.lectureId.slice(0, 8)}… at ${mins}:${String(secs).padStart(2, '0')}`);
+                        }}
+                      >
+                        <Text style={{ color: c.primary, fontSize: 11 }}>
+                          ↗ Lecture · {Math.floor(cit.startSec / 60)}:{String(cit.startSec % 60).padStart(2, '0')}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
               </View>
             )}
             <Pressable
