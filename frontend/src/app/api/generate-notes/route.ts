@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { settings as dbSettings, lectures } from '@/lib/db';
+import { requireAuth } from '@/lib/server-auth';
 import { createReadStream, existsSync, statSync } from 'fs';
 import { unlink } from 'fs/promises';
 import { execFile } from 'child_process';
@@ -109,6 +110,7 @@ async function transcribeAudio(audioFile: File, openaiKey: string, language = 'a
 }
 
 export const POST = logRoute(async function POST(request: NextRequest) {
+  if (!requireAuth(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     // Read AI settings from DB (server-side); fall back to env var
     const storedSettings = dbSettings.getAll();

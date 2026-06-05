@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { logRoute } from '@/lib/logger';
+import { requireAuth } from '@/lib/server-auth';
 
 export const POST = logRoute(async function POST(request: NextRequest) {
+  if (!requireAuth(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
