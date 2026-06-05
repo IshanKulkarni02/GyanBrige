@@ -54,3 +54,17 @@ coverage/
 src-tauri/target/
 *.tar.gz
 storage/
+
+# Runtime logs
+frontend/logs/
+.pnpm-store/
+.env.*.local
+coverage/
+.idea/
+.vscode/
+!.vscode/extensions.json
+src-tauri/target/
+*.tar.gz
+storage/
+android/
+ios/
