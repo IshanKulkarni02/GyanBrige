@@ -253,11 +253,17 @@ export default function TeacherAttendancePage() {
             <div className="glass rounded-2xl p-6 border border-white/10 space-y-4">
               <h2 className="font-semibold">⚙️ Attendance Policy</h2>
               <div className="grid grid-cols-2 gap-4">
-                {[['minAttendancePercent','Min attendance (%)','number'],['remoteAllowPercent','Remote allowance (%)','number'],['webcamCheckInterval','Webcam check (min)','number']].map(([k,lbl])=>(
+                {([
+                  ['minAttendancePercent','Min attendance (%)',0,100],
+                  ['remoteAllowPercent','Remote allowance (%)',0,100],
+                  ['webcamCheckInterval','Webcam check interval (min)',1,120],
+                ] as [string,string,number,number][]).map(([k,lbl,mn,mx])=>(
                   <div key={k}>
                     <label className="text-xs text-white/50 block mb-1">{lbl}</label>
-                    <input type="number" value={(policy as unknown as Record<string,number>)[k]}
-                      onChange={e=>setPolicy({...policy,[k]:+e.target.value})} className="input-glass" />
+                    <input type="number" min={mn} max={mx}
+                      value={(policy as unknown as Record<string,number>)[k]}
+                      onChange={e=>setPolicy({...policy,[k]:Math.min(mx,Math.max(mn,+e.target.value))})}
+                      className="input-glass" />
                   </div>
                 ))}
                 <div>

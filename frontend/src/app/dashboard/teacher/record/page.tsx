@@ -184,6 +184,10 @@ export default function RecordLecturePage() {
       setError('Please fill in all required fields');
       return;
     }
+    if (recordingTime < 3) {
+      setError('Recording is too short (minimum 3 seconds)');
+      return;
+    }
 
     setSaving(true);
     setError('');

@@ -93,7 +93,7 @@ export default function UsersPage() {
       setCreateError('All fields are required');
       return;
     }
-    if (newPassword.length < 6) {
+    if (newPassword.length < 8) {
       setCreateError('Password must be at least 6 characters');
       return;
     }
