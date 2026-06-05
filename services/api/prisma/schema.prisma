@@ -837,6 +837,7 @@ model FlashcardReview {
 
   @@unique([cardId, studentId])
   @@index([studentId, dueAt])
+  @@index([cardId])
 }
 
 model Doubt {

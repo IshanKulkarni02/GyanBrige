@@ -116,9 +116,17 @@ export async function runDropoutRisk(): Promise<{ scored: number; topRisk: numbe
     const features = await featuresForStudent(s.id);
     const sc = score(features);
     if (sc > highest) highest = sc;
-    await prisma.dropoutRiskScore.create({
-      data: { studentId: s.id, score: sc, factors: features as never },
+    // Keep one score per student per calendar day — idempotent re-runs
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+    const existing = await prisma.dropoutRiskScore.findFirst({
+      where: { studentId: s.id, computedAt: { gte: today, lt: tomorrow } },
     });
+    if (existing) {
+      await prisma.dropoutRiskScore.update({ where: { id: existing.id }, data: { score: sc, factors: features as never } });
+    } else {
+      await prisma.dropoutRiskScore.create({ data: { studentId: s.id, score: sc, factors: features as never } });
+    }
   }
   return { scored: students.length, topRisk: highest };
 }

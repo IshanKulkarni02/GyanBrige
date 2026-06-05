@@ -16,7 +16,7 @@ interface Plan {
   generatedAt: string;
   planJson: { items: Item[]; generatedFor: string };
   weakTopics: string[];
-  course: { subject: { code: string; name: string } };
+  course: { id: string; subject: { code: string; name: string } };
 }
 
 export default function StudyPlan() {
@@ -77,7 +77,7 @@ export default function StudyPlan() {
                     {new Date(p.generatedAt).toLocaleDateString()} · {p.planJson.items.length} tasks
                   </Text>
                 </View>
-                <Button label="Regenerate" variant="ghost" size="sm" onPress={() => regen(p.course.subject.code)} />
+                <Button label="Regenerate" variant="ghost" size="sm" onPress={() => regen(p.course.id)} />
               </View>
               {p.weakTopics.length > 0 && (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.sm }}>

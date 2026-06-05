@@ -42,7 +42,7 @@ export async function runChapterDetect(lectureId: string): Promise<{ chapters: n
     startSec: r.startSec,
     endSec: r.endSec,
     text: r.text,
-    embedding: JSON.parse(r.embedding.replace(/^\[|\]$/g, '[').replace(/^\[/, '[')) as number[],
+    embedding: JSON.parse(r.embedding) as number[],
   }));
 
   const chapters: { startSec: number; title: string }[] = [

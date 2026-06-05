@@ -69,7 +69,7 @@ export default function Dashboard() {
     { href: '/(app)/attendance', title: 'Attendance', desc: 'Tap in, view history', tag: 'Daily' },
     { href: '/(app)/notices', title: 'Notice board', desc: 'College + course updates', tag: 'News' },
     { href: '/(app)/chat', title: 'Messages', desc: 'DMs, groups, class chat', tag: 'Talk' },
-    { href: '/(app)/doubts', title: 'Doubt board', desc: 'Ask questions, get AI answers', tag: 'Help' },
+    { href: '/(app)/courses', title: 'Doubt board', desc: 'Open a course → ask questions', tag: 'Help' },
     { href: '/(app)/clubs', title: 'Clubs', desc: 'Join + RSVP events', tag: 'Community' },
     { href: '/(app)/applications', title: 'Applications', desc: 'Add/drop, leave, bonafide', tag: 'Forms' },
     { href: '/(app)/feedback', title: 'Feedback', desc: 'Anonymous or named', tag: 'Voice' },
@@ -88,7 +88,7 @@ export default function Dashboard() {
     { href: '/(app)/assignments', title: 'Assignments', desc: 'Set + grade work', tag: 'Teach' },
     { href: '/(app)/tests/index', title: 'Tests', desc: 'Create + proctor exams', tag: 'Teach' },
     { href: '/(app)/attendance', title: 'Attendance', desc: 'Mark + review', tag: 'Teach' },
-    { href: '/(app)/whiteboard', title: 'Whiteboard', desc: 'Live collaborative drawing', tag: 'Live' },
+    { href: '/(app)/lectures', title: 'Whiteboard', desc: 'Open a lecture → start whiteboard', tag: 'Live' },
   ];
 
   const adminTiles: Tile[] = [

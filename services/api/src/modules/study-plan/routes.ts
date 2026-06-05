@@ -18,7 +18,7 @@ export const registerStudyPlan: FastifyPluginAsync = async (app) => {
     const me = await requireAuth(req);
     return prisma.studyPlan.findMany({
       where: { studentId: me.id },
-      include: { course: { include: { subject: { select: { code: true, name: true } } } } },
+      include: { course: { select: { id: true, subject: { select: { code: true, name: true } } } } },
       orderBy: { generatedAt: 'desc' },
     });
   });
