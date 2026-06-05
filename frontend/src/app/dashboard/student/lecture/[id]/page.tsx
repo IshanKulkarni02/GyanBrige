@@ -59,7 +59,11 @@ export default function LecturePlayerPage() {
   useEffect(() => {
     const stored = localStorage.getItem('user');
     if (!stored) { router.push('/login'); return; }
-    const parsed = JSON.parse(stored);
+    let parsed;
+    try { parsed = JSON.parse(stored); } catch {
+      localStorage.removeItem('user');
+      router.push('/login'); return;
+    }
     if (parsed.role !== 'student') { router.push('/login'); return; }
     setUser(parsed);
     loadLecture();

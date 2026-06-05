@@ -49,7 +49,11 @@ export default function RecordLecturePage() {
   useEffect(() => {
     const stored = localStorage.getItem('user');
     if (stored) {
-      const parsed = JSON.parse(stored);
+      let parsed;
+    try { parsed = JSON.parse(stored); } catch {
+      localStorage.removeItem('user');
+      router.push('/login'); return;
+    }
       if (parsed.role !== 'teacher') {
         router.push('/login');
       } else {
