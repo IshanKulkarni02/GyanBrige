@@ -8,6 +8,9 @@ import { runEmbedTranscript } from './jobs/embed-transcript.js';
 import { runFlashcardGen } from './jobs/flashcard-gen.js';
 import { runGenerateStudyPlan } from './jobs/generate-study-plan.js';
 import { runAutogradeEssay } from './jobs/autograde-essay.js';
+import { runDropoutRisk } from './jobs/dropout-risk.js';
+import { runChapterDetect } from './jobs/chapter-detect.js';
+import { runCaptionsTranslate } from './jobs/captions-translate.js';
 
 const log = pino({
   transport: { target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss' } },
@@ -98,19 +101,46 @@ workers.push(
   ),
 );
 
-// Placeholder workers (filled in in Phase 8).
-for (const name of ['dropout-risk', 'chapter-detect', 'captions-translate']) {
-  workers.push(
-    new Worker(
-      name,
-      async (job) => {
-        log.warn({ jobId: job.id, name }, 'noop worker — phase not yet implemented');
-        return { noop: true };
-      },
-      connection,
-    ),
-  );
-}
+workers.push(
+  new Worker(
+    'dropout-risk',
+    async (job) => {
+      log.info({ jobId: job.id }, 'dropout-risk started');
+      const result = await runDropoutRisk();
+      log.info({ jobId: job.id, ...result }, 'dropout-risk done');
+      return result;
+    },
+    connection,
+  ),
+);
+
+workers.push(
+  new Worker(
+    'chapter-detect',
+    async (job) => {
+      const { lectureId } = job.data as { lectureId: string };
+      log.info({ jobId: job.id, lectureId }, 'chapter-detect started');
+      const result = await runChapterDetect(lectureId);
+      log.info({ jobId: job.id, lectureId, ...result }, 'chapter-detect done');
+      return result;
+    },
+    connection,
+  ),
+);
+
+workers.push(
+  new Worker(
+    'captions-translate',
+    async (job) => {
+      const { lectureId, targetLanguage } = job.data as { lectureId: string; targetLanguage: string };
+      log.info({ jobId: job.id, lectureId, targetLanguage }, 'captions-translate started');
+      const result = await runCaptionsTranslate(lectureId, targetLanguage);
+      log.info({ jobId: job.id, ...result }, 'captions-translate done');
+      return result;
+    },
+    connection,
+  ),
+);
 
 const shutdown = async () => {
   log.info('worker shutting down');
