@@ -40,7 +40,7 @@ function cardsFromNotes(notes: NotesShape): Card[] {
 
 export async function runFlashcardGen(lectureId: string): Promise<{ created: number }> {
   const notes = await prisma.notes.findUnique({ where: { lectureId } });
-  if (!notes) return { created: 0 };
+  if (!notes || !notes.contentJson) return { created: 0 };
   let cards = cardsFromNotes(notes.contentJson as NotesShape);
 
   if (cards.length === 0) {

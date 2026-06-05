@@ -37,13 +37,13 @@ ${sub.contentText.slice(0, 8000)}`;
     body: JSON.stringify({ transcript: prompt, type: 'full', outputLanguage: 'en' }),
   });
   if (!res.ok) return { error: `grader ${res.status}` };
-  const data = await res.json();
+  let data: unknown;
+  try { data = await res.json(); } catch { return { error: 'invalid JSON from grader' }; }
+  if (!data || typeof data !== 'object') return { error: 'unexpected grader response shape' };
 
   await prisma.submission.update({
     where: { id: submissionId },
-    data: {
-      feedback: typeof data === 'object' ? JSON.stringify(data) : String(data),
-    },
+    data: { feedback: JSON.stringify(data) },
   });
   return { ok: true };
 }

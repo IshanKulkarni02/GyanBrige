@@ -4,6 +4,7 @@
 
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { Role } from '@prisma/client';
 import { prisma } from '../../db.js';
 import { requireAuth } from '../../lib/role-guard.js';
 

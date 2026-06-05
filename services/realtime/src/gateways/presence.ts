@@ -14,7 +14,8 @@ export function registerPresence(io: Server, db: Db) {
     socket.broadcast.emit('presence:update', { userId, status: 'online' });
 
     const heartbeat = setInterval(() => {
-      presence.updateOne({ userId }, { $set: { lastSeen: new Date() } }).catch(() => {});
+      presence.updateOne({ userId }, { $set: { lastSeen: new Date() } })
+        .catch((e) => console.error('[presence] heartbeat db error:', (e as Error).message));
     }, 30_000);
 
     socket.on('disconnect', async () => {

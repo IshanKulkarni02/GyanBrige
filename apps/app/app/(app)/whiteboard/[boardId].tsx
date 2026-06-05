@@ -57,11 +57,13 @@ export default function Whiteboard() {
     fit();
     window.addEventListener('resize', fit);
 
-    let cleanup: (() => void) | null = null;
+    let mounted = true;
 
     (async () => {
       const { io } = await import('socket.io-client');
+      if (!mounted) return; // component unmounted before async resolved
       const token = await tokenStore.get();
+      if (!mounted) return;
       const socket = io(realtimeUrl, { auth: { token }, transports: ['websocket'] });
       socketRef.current = socket;
 
@@ -72,14 +74,14 @@ export default function Whiteboard() {
         const ctx = canvasRef.current?.getContext('2d');
         if (ctx) drawStroke(ctx, stroke);
       });
-
-      cleanup = () => {
-        socket.disconnect();
-        window.removeEventListener('resize', fit);
-      };
     })();
 
-    return () => cleanup?.();
+    return () => {
+      mounted = false;
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+      window.removeEventListener('resize', fit);
+    };
   }, [boardId, drawStroke]);
 
   if (Platform.OS !== 'web') {
