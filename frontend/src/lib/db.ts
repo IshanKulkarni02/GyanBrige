@@ -462,7 +462,7 @@ export const lectures = {
 
 function parseEnrollment(row: Record<string, unknown>): Enrollment {
   return {
-    ...(row as Enrollment),
+    ...(row as unknown as Enrollment),
     completedLectures: JSON.parse((row.completedLectures as string) || '[]'),
   };
 }
@@ -514,7 +514,7 @@ export const enrollments = {
 
 function parseAttendance(row: Record<string, unknown>): AttendanceRecord {
   return {
-    ...(row as AttendanceRecord),
+    ...(row as unknown as AttendanceRecord),
     records: JSON.parse((row.records as string) || '{}'),
   };
 }
@@ -623,7 +623,7 @@ export interface Quiz {
 }
 
 function parseQuestion(row: Record<string, unknown>): QuizQuestion {
-  return { ...(row as QuizQuestion), options: JSON.parse((row.options as string) || '[]') };
+  return { ...(row as unknown as QuizQuestion), options: JSON.parse((row.options as string) || '[]') };
 }
 
 export const quizzes = {

@@ -10,6 +10,7 @@ interface CourseWithProgress {
   id: string; name: string; description: string; icon: string; color: string;
   teacherName: string; lectureCount: number; progress: number;
   completedLectures: string[];
+  enrolled?: boolean;
 }
 interface UserData { id: string; name: string; role: string; }
 
