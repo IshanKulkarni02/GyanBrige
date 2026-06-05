@@ -317,7 +317,7 @@ export default function LecturePlayerPage() {
           <div className="lg:hidden overflow-y-auto">
             {tab === 'chapters' && <ChapterList chapters={chapters} activeChapter={activeChapter} onSeek={seekToChapter} videoDuration={videoDuration} />}
             {tab === 'notes'    && <NotesPanel notes={lecture.notes} />}
-            {tab === 'quiz'     && <QuizPanel quizzes={quizzes} />}
+            {tab === 'quiz'     && <QuizPanel quizzes={quizzes} userId={user?.id ?? ''} />}
           </div>
         </div>
 
@@ -334,7 +334,7 @@ export default function LecturePlayerPage() {
           <div className="flex-1 overflow-y-auto">
             {tab === 'chapters' && <ChapterList chapters={chapters} activeChapter={activeChapter} onSeek={seekToChapter} videoDuration={videoDuration} />}
             {(tab === 'notes' || chapters.length === 0) && tab !== 'quiz' && <NotesPanel notes={lecture.notes} />}
-            {tab === 'quiz'     && <QuizPanel quizzes={quizzes} />}
+            {tab === 'quiz'     && <QuizPanel quizzes={quizzes} userId={user?.id ?? ''} />}
           </div>
         </div>
       </div>
@@ -394,10 +394,46 @@ function NotesPanel({ notes }: { notes: string }) {
 
 // ── Quiz panel ────────────────────────────────────────────────────────────────
 
-function QuizPanel({ quizzes }: { quizzes: Quiz[] }) {
+function QuizPanel({ quizzes, userId }: { quizzes: Quiz[]; userId: string }) {
   const [activeQuiz,  setActiveQuiz]  = useState<Quiz | null>(null);
   const [answers,     setAnswers]     = useState<Record<number, number>>({});
   const [submitted,   setSubmitted]   = useState(false);
+  const [submitting,  setSubmitting]  = useState(false);
+  const [attendanceMarked, setAttendanceMarked] = useState(false);
+
+  const openQuiz = async (quiz: Quiz) => {
+    setActiveQuiz(quiz);
+    setSubmitted(false);
+    setAttendanceMarked(false);
+    // Load previous attempt
+    const r = await authFetch(`/api/quizzes/${quiz.id}/attempt?userId=${userId}`);
+    const d = await r.json().catch(() => ({}));
+    if (d.attempt) {
+      setAnswers(d.attempt.answers ?? {});
+      setSubmitted(true);
+    } else {
+      setAnswers({});
+    }
+  };
+
+  const submitQuiz = async () => {
+    if (!activeQuiz) return;
+    setSubmitting(true);
+    try {
+      const r = await authFetch(`/api/quizzes/${activeQuiz.id}/attempt`, {
+        method: 'POST',
+        body: JSON.stringify({ answers }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setSubmitted(true);
+      if (d.attendanceCheckin) setAttendanceMarked(true);
+    } catch (e) {
+      console.error('Quiz submit failed:', e);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (!quizzes.length) return (
     <div className="p-6 text-center">
@@ -411,7 +447,7 @@ function QuizPanel({ quizzes }: { quizzes: Quiz[] }) {
     <div className="p-4 space-y-3">
       <p className="text-xs text-white/40 mb-4">Test your understanding of this lecture:</p>
       {quizzes.map(quiz => (
-        <button key={quiz.id} onClick={() => { setActiveQuiz(quiz); setAnswers({}); setSubmitted(false); }}
+        <button key={quiz.id} onClick={() => openQuiz(quiz)}
           className="w-full glass rounded-xl p-4 text-left hover:bg-white/5 transition group">
           <div className="flex items-start justify-between gap-2">
             <div>
@@ -461,7 +497,10 @@ function QuizPanel({ quizzes }: { quizzes: Quiz[] }) {
             {score === questions.length ? 'Perfect score!' : score / questions.length >= 0.7 ? 'Good job!' : 'Keep studying!'}
             {' '}{score} of {questions.length} correct
           </p>
-          <button onClick={() => { setAnswers({}); setSubmitted(false); }}
+          {attendanceMarked && (
+            <p className="text-xs text-emerald-400 mt-2">✓ Attendance marked (quiz passed)</p>
+          )}
+          <button onClick={() => { setAnswers({}); setSubmitted(false); setAttendanceMarked(false); }}
             className="mt-3 text-xs text-white/50 hover:text-white underline">Retry quiz</button>
         </div>
       )}
@@ -544,10 +583,10 @@ function QuizPanel({ quizzes }: { quizzes: Quiz[] }) {
               style={{ width: `${questions.length ? (answered / questions.length) * 100 : 0}%` }} />
           </div>
           <button
-            disabled={answered < questions.length}
-            onClick={() => setSubmitted(true)}
+            disabled={answered < questions.length || submitting}
+            onClick={submitQuiz}
             className="w-full py-2.5 rounded-xl bg-purple-500/20 text-purple-300 text-sm font-medium hover:bg-purple-500/30 transition disabled:opacity-40 disabled:cursor-not-allowed">
-            {answered < questions.length
+            {submitting ? '⏳ Saving…' : answered < questions.length
               ? `Answer all ${questions.length - answered} remaining question${questions.length - answered !== 1 ? 's' : ''}`
               : '🧠 Submit quiz'}
           </button>
