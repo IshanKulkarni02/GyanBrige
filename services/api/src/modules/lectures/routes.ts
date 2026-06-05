@@ -159,11 +159,19 @@ export const registerLectures: FastifyPluginAsync = async (app) => {
     }
 
     // Extract the MinIO object name from the stored public URL
-    const urlObj = new URL(lec.recordingUrl);
+    let urlObj: URL;
+    try { urlObj = new URL(lec.recordingUrl); } catch {
+      throw new AppError(500, 'BAD_RECORDING_URL', 'Recording URL is malformed — contact an admin');
+    }
     const objectName = urlObj.pathname.replace(`/${BUCKET}/`, '');
 
     // Presigned URL valid for 2 hours — enough for download + offline cache
-    const url = await minio.presignedGetObject(BUCKET, objectName, 7200);
+    let url: string;
+    try {
+      url = await minio.presignedGetObject(BUCKET, objectName, 7200);
+    } catch {
+      throw new AppError(503, 'STORAGE_UNAVAILABLE', 'Could not generate download link — try again shortly');
+    }
     const stat = await minio.statObject(BUCKET, objectName).catch(() => null);
 
     return {

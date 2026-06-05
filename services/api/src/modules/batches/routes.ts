@@ -38,9 +38,9 @@ export const registerBatches: FastifyPluginAsync = async (app) => {
     });
   });
 
-  // Get a single batch with its students
+  // Get a single batch with its students — restricted to admin/staff
   app.get('/:id', async (req) => {
-    await requireAuth(req);
+    await requireRole(req, Role.ADMIN, Role.STAFF);
     const { id } = req.params as { id: string };
     const batch = await prisma.batch.findUnique({
       where: { id },
@@ -60,7 +60,7 @@ export const registerBatches: FastifyPluginAsync = async (app) => {
 
   // List students in a batch (unique, without per-course duplication)
   app.get('/:id/students', async (req) => {
-    await requireAuth(req);
+    await requireRole(req, Role.ADMIN, Role.STAFF);
     const { id } = req.params as { id: string };
     const enrollments = await prisma.enrollment.findMany({
       where: { batchId: id },

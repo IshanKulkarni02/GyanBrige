@@ -39,10 +39,14 @@ export default function Tutor() {
   };
 
   const newSession = async () => {
-    const { sessionId } = await api<{ sessionId: string }>('/api/ai-tutor/sessions', { method: 'POST', body: JSON.stringify({ title: 'New session' }) });
-    setActive(await api<FullSession>(`/api/ai-tutor/sessions/${sessionId}`));
-    setShowSessions(false);
-    void loadSessions();
+    try {
+      const { sessionId } = await api<{ sessionId: string }>('/api/ai-tutor/sessions', { method: 'POST', body: JSON.stringify({ title: 'New session' }) });
+      setActive(await api<FullSession>(`/api/ai-tutor/sessions/${sessionId}`));
+      setShowSessions(false);
+      void loadSessions();
+    } catch (e) {
+      Alert.alert('Could not create session', (e as Error).message);
+    }
   };
 
   const send = async () => {

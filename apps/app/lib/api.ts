@@ -16,6 +16,10 @@ export const livekitUrl = extras.livekitUrl;
 
 const TOKEN_KEY = 'gb_token';
 
+// Screens register this to trigger logout when a 401 is received mid-session
+let _onSessionExpired: (() => void) | null = null;
+export function setSessionExpiredHandler(fn: () => void) { _onSessionExpired = fn; }
+
 const webStore = {
   get: async () => (typeof localStorage !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null),
   set: async (v: string) => typeof localStorage !== 'undefined' && localStorage.setItem(TOKEN_KEY, v),
@@ -43,6 +47,12 @@ export async function api<T>(
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const res = await fetch(`${apiUrl}${path}`, { ...init, headers });
   if (!res.ok) {
+    // Token expired or invalid — clear and signal logout to the app
+    if (res.status === 401) {
+      await tokenStore.del();
+      _onSessionExpired?.();
+      throw new Error('SESSION_EXPIRED');
+    }
     const body = await res.json().catch(() => ({}));
     throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
   }
