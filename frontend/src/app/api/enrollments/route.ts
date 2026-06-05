@@ -20,7 +20,6 @@ export const GET = logRoute(async function GET(request: NextRequest) {
           userId: e.userId,
           userName: user?.name || 'Unknown',
           userEmail: user?.email || '',
-          userMacAddress: user?.macAddress ?? null,
         };
       });
       return NextResponse.json({ enrollments: enriched });

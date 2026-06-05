@@ -51,6 +51,11 @@ export const POST = logRoute(async function POST(request: NextRequest) {
       );
     }
 
+    const teacher = users.getById(teacherId);
+    if (!teacher || teacher.role !== 'teacher') {
+      return NextResponse.json({ error: 'Invalid teacherId — must be an existing teacher' }, { status: 400 });
+    }
+
     const newCourse = courses.create({
       name,
       description: description || '',
