@@ -53,6 +53,11 @@ export default function TeacherCoursePage() {
 
   const notesRef = useRef<HTMLTextAreaElement>(null);
 
+  // Cleanup regen timer on unmount to prevent memory leak
+  useEffect(() => {
+    return () => { if (regenTimerRef.current) clearInterval(regenTimerRef.current); };
+  }, []);
+
   useEffect(() => {
     const stored = localStorage.getItem('user');
     if (!stored) { router.push('/login'); return; }
