@@ -35,6 +35,7 @@ export default function DropoutRisk() {
       keyExtractor={(r) => r.studentId}
       style={{ backgroundColor: c.bg }}
       contentContainerStyle={{ padding: spacing.md, gap: spacing.sm }}
+      ListEmptyComponent={<Text style={{ color: c.textMuted, textAlign: 'center', marginTop: 32 }}>No at-risk students detected.</Text>}
       renderItem={({ item }) => {
         const color = item.score > 0.7 ? c.danger : item.score > 0.4 ? '#f59e0b' : c.success;
         return (

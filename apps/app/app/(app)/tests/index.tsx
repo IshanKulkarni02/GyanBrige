@@ -103,7 +103,7 @@ export default function TestsList() {
       setShowCreate(false);
       loadTests();
       Alert.alert('Test created', 'Add questions from the test detail screen.', [
-        { text: 'Add questions now', onPress: () => router.push(`/(app)/tests/${test.id}/edit` as never) },
+        { text: 'Later', style: 'cancel' },
         { text: 'Later', style: 'cancel' },
       ]);
     } catch (e) {
@@ -170,7 +170,7 @@ export default function TestsList() {
             const past = new Date(item.closesAt) < now;
             return (
               <Pressable
-                onPress={() => router.push(`/(app)/tests/${item.id}/attempt` as never)}
+                onPress={() => router.push({ pathname: '/(app)/tests/[testId]/attempt', params: { testId: item.id } } as never)}
                 style={{
                   padding: spacing.md, borderWidth: 1,
                   borderColor: open ? c.success : c.border,

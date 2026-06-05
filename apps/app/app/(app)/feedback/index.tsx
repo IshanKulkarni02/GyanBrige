@@ -32,18 +32,29 @@ export default function FeedbackForms() {
       .finally(() => setLoading(false));
   }, []);
 
+  const [submitting, setSubmitting] = useState(false);
+
   const submit = async () => {
-    if (!active) return;
+    if (!active || submitting) return;
+    // Validate required questions
+    const missing = active.schema?.questions?.filter((q: { id: string; required?: boolean }) => q.required && !answers[q.id]?.trim());
+    if (missing?.length) {
+      Alert.alert('Required fields', 'Please answer all required questions before submitting.');
+      return;
+    }
+    setSubmitting(true);
     try {
       await api('/api/feedback/responses', {
         method: 'POST',
         body: JSON.stringify({ formId: active.id, answers }),
       });
-      Alert.alert('Thanks');
+      Alert.alert('Thanks', 'Your feedback has been submitted.');
       setActive(null);
       setAnswers({});
     } catch (e) {
       Alert.alert('Failed', (e as Error).message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -126,15 +137,17 @@ export default function FeedbackForms() {
         />
         <Pressable
           onPress={submit}
+          disabled={submitting}
           style={{
             padding: spacing.md,
             backgroundColor: c.primary,
             borderRadius: radius.md,
             alignItems: 'center',
             marginTop: spacing.md,
+            opacity: submitting ? 0.6 : 1,
           }}
         >
-          <Text style={{ color: c.primaryFg, fontWeight: '600' }}>Submit feedback</Text>
+          <Text style={{ color: c.primaryFg, fontWeight: '600' }}>{submitting ? 'Submitting…' : 'Submit feedback'}</Text>
         </Pressable>
       </View>
     );

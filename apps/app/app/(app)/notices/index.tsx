@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, FlatList, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { api } from '../../../lib/api';
 import { colors, spacing, radius } from '../../../lib/theme';
 
@@ -27,8 +27,12 @@ export default function Notices() {
   }, []);
 
   const ack = async (id: string) => {
-    await api(`/api/notices/${id}/ack`, { method: 'POST' });
-    await load();
+    try {
+      await api(`/api/notices/${id}/ack`, { method: 'POST' });
+      await load();
+    } catch (e) {
+      Alert.alert('Failed', (e as Error).message);
+    }
   };
 
   if (loading) return <ActivityIndicator style={{ marginTop: 32 }} />;

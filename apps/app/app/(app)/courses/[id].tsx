@@ -208,7 +208,7 @@ export default function CourseDetail() {
           <Button label="Assignments" variant="secondary" size="sm"
             onPress={() => router.push(`/(app)/assignments?courseId=${id}`)} />
           <Button label="Tests" variant="secondary" size="sm"
-            onPress={() => router.push(`/(app)/tests/index?courseId=${id}` as never)} />
+            onPress={() => router.push({ pathname: '/(app)/tests/index', params: { courseId: id } } as never)} />
         </View>
       </Surface>
 

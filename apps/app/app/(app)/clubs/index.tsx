@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, FlatList, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { api } from '../../../lib/api';
+import { useAuth } from '../../../lib/auth-store';
 import { colors, spacing, radius } from '../../../lib/theme';
 
 interface Club {
@@ -15,6 +16,7 @@ interface Club {
 export default function Clubs() {
   const [rows, setRows] = useState<Club[]>([]);
   const [loading, setLoading] = useState(true);
+  const me = useAuth((s) => s.me);
   const c = colors.light;
 
   const load = async () => {
@@ -44,7 +46,7 @@ export default function Clubs() {
       contentContainerStyle={{ padding: spacing.md }}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
       renderItem={({ item }) => {
-        const joined = item.members.length > 0;
+        const joined = item.members.some((m) => m.id === me?.id);
         return (
           <View
             style={{
