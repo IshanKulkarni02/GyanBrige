@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, router, Link } from 'expo-router';
+import * as FileSystem from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import { api, apiUrl, tokenStore } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-store';
@@ -32,6 +33,8 @@ export default function LectureDetail() {
   const [lec, setLec] = useState<Lecture | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [downloadedPath, setDownloadedPath] = useState<string | null>(null);
   const c = useColors();
 
   const me = useAuth((s) => s.me);
@@ -59,6 +62,40 @@ export default function LectureDetail() {
       Alert.alert('Failed', (e as Error).message);
     } finally {
       setBusy(null);
+    }
+  };
+
+  const downloadRecording = async () => {
+    setBusy('download');
+    setDownloadProgress(0);
+    try {
+      const { url, filename, sizeBytes } = await api<{ url: string; filename: string; sizeBytes: number | null; expiresIn: number }>(
+        `/api/lectures/${lec!.id}/download-url`,
+      );
+      const dest = `${FileSystem.documentDirectory}lectures/${filename}`;
+      // Ensure directory exists
+      await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}lectures/`, { intermediates: true }).catch(() => {});
+      const downloadResumable = FileSystem.createDownloadResumable(
+        url,
+        dest,
+        {},
+        (progress) => {
+          if (progress.totalBytesExpectedToWrite > 0) {
+            setDownloadProgress(Math.round((progress.totalBytesWritten / progress.totalBytesExpectedToWrite) * 100));
+          }
+        },
+      );
+      const result = await downloadResumable.downloadAsync();
+      if (result?.status === 200) {
+        setDownloadedPath(result.uri);
+        const mb = sizeBytes ? ` (${(sizeBytes / 1_000_000).toFixed(1)} MB)` : '';
+        Alert.alert('Downloaded', `Saved to device${mb}. Available offline.`);
+      }
+    } catch (e) {
+      Alert.alert('Download failed', (e as Error).message);
+    } finally {
+      setBusy(null);
+      setDownloadProgress(null);
     }
   };
 
@@ -204,6 +241,35 @@ export default function LectureDetail() {
               <Button
                 label="Join stream"
                 onPress={() => router.push(`/(app)/lectures/${lec.id}/live?role=student`)}
+              />
+            </View>
+          </Surface>
+        )}
+
+        {/* Download recording (students + teachers) */}
+        {lec.recordingUrl && (
+          <Surface>
+            <Text style={{ ...typography.micro, color: c.accent }}>Offline</Text>
+            <Text style={{ ...typography.h3, color: c.text, marginTop: spacing.xs }}>
+              {downloadedPath ? 'Downloaded' : 'Download lecture'}
+            </Text>
+            <Text style={{ color: c.textMuted, fontSize: 12, marginTop: spacing.xs }}>
+              {downloadedPath ? 'Available for offline playback.' : 'Save to your device for offline viewing. Link valid 2 hours.'}
+            </Text>
+            {downloadProgress !== null && (
+              <View style={{ marginTop: spacing.sm }}>
+                <View style={{ height: 6, backgroundColor: c.border, borderRadius: 3 }}>
+                  <View style={{ height: 6, width: `${downloadProgress}%` as `${number}%`, backgroundColor: c.primary, borderRadius: 3 }} />
+                </View>
+                <Text style={{ color: c.textMuted, fontSize: 12, marginTop: spacing.xs }}>{downloadProgress}%</Text>
+              </View>
+            )}
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                label={busy === 'download' ? `Downloading ${downloadProgress ?? 0}%…` : downloadedPath ? 'Downloaded ✓' : 'Download'}
+                busy={busy === 'download'}
+                variant={downloadedPath ? 'ghost' : 'secondary'}
+                onPress={downloadedPath ? undefined : downloadRecording}
               />
             </View>
           </Surface>
