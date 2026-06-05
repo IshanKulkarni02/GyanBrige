@@ -14,8 +14,22 @@ const askSchema = z.object({
 
 export const registerDoubts: FastifyPluginAsync = async (app) => {
   app.get('/course/:courseId', async (req) => {
-    await requireAuth(req);
+    const me = await requireAuth(req);
     const { courseId } = req.params as { courseId: string };
+    const isStaff = me.roles.includes(Role.ADMIN) || me.roles.includes(Role.STAFF);
+    if (!isStaff) {
+      const access = await prisma.course.findFirst({
+        where: {
+          id: courseId,
+          OR: [
+            { enrollments: { some: { userId: me.id } } },
+            { teachers: { some: { id: me.id } } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!access) throw new AppError(403, 'NOT_ENROLLED', 'Not enrolled in this course');
+    }
     return prisma.doubt.findMany({
       where: { courseId },
       include: { student: { select: { id: true, name: true } } },
