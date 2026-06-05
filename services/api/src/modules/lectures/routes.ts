@@ -130,4 +130,47 @@ export const registerLectures: FastifyPluginAsync = async (app) => {
 
     return { ok: true, recordingUrl: url };
   });
+
+  // Return a short-lived presigned download URL for the lecture recording.
+  // Only students enrolled in the course (or teachers/admin) can download.
+  app.get('/:id/download-url', async (req) => {
+    const me = await requireAuth(req);
+    const { id } = req.params as { id: string };
+
+    const lec = await prisma.lecture.findUnique({
+      where: { id },
+      include: {
+        course: {
+          include: {
+            teachers: { select: { id: true } },
+            enrollments: { where: { userId: me.id }, select: { id: true } },
+          },
+        },
+      },
+    });
+    if (!lec) throw new AppError(404, 'NOT_FOUND', 'Lecture not found');
+    if (!lec.recordingUrl) throw new AppError(409, 'NO_RECORDING', 'No recording available for this lecture');
+
+    const isTeacher = lec.course.teachers.some((t) => t.id === me.id);
+    const isEnrolled = lec.course.enrollments.length > 0;
+    const isAdmin = me.roles.includes(Role.ADMIN) || me.roles.includes(Role.STAFF);
+    if (!isTeacher && !isEnrolled && !isAdmin) {
+      throw new AppError(403, 'FORBIDDEN', 'Not enrolled in this course');
+    }
+
+    // Extract the MinIO object name from the stored public URL
+    const urlObj = new URL(lec.recordingUrl);
+    const objectName = urlObj.pathname.replace(`/${BUCKET}/`, '');
+
+    // Presigned URL valid for 2 hours — enough for download + offline cache
+    const url = await minio.presignedGetObject(BUCKET, objectName, 7200);
+    const stat = await minio.statObject(BUCKET, objectName).catch(() => null);
+
+    return {
+      url,
+      filename: `${lec.title.replace(/[^a-z0-9]/gi, '_')}.${objectName.split('.').pop()}`,
+      sizeBytes: stat?.size ?? null,
+      expiresIn: 7200,
+    };
+  });
 };
