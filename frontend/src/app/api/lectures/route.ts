@@ -54,6 +54,7 @@ export const POST = logRoute(async function POST(request: NextRequest) {
     const order = existingLectures.length + 1;
 
     // Create the lecture
+    const { chapters = [], segments = [] } = body;
     const lecture = lectures.create({
       title,
       description: description || '',
@@ -62,6 +63,8 @@ export const POST = logRoute(async function POST(request: NextRequest) {
       notes: notes || '',
       videoUrl: videoUrl || undefined,
       order,
+      segments,
+      chapters,
     });
 
     return NextResponse.json({ success: true, lecture }, { status: 201 });

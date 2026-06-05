@@ -8,14 +8,9 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '25gb',
     },
   },
-  // Allow large multipart bodies for Route Handlers (video upload)
-  // Each chunk sent to /api/upload is 10 MB so this must be > chunk size
-  api: {
-    bodyParser: {
-      sizeLimit: '25gb',
-    },
-    responseLimit: false,
-  },
+  // Large bodies handled per-route via export const config = { api: { bodyParser: false } }
+  // The `api` key at the top level is not supported in Next.js 13+ App Router —
+  // body size is controlled per route via the runtime itself.
   turbopack: {
     root: path.resolve(__dirname),
   },
