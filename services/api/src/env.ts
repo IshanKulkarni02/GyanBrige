@@ -29,6 +29,7 @@ const schema = z.object({
 
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+  API_URL: z.string().url().optional(),
 
   LIVEKIT_API_KEY: z.string(),
   LIVEKIT_API_SECRET: z.string().min(16),
