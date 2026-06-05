@@ -117,6 +117,6 @@ export async function runCodePlagiarism(submissionId: string, gitUrl: string): P
     });
     return { top, matches: matches.length };
   } finally {
-    rmSync(tmp, { recursive: true, force: true });
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
   }
 }
