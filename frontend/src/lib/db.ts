@@ -265,6 +265,18 @@ db.exec(`
     explanation   TEXT NOT NULL DEFAULT '',
     "order"       INTEGER NOT NULL DEFAULT 1
   );
+
+  CREATE TABLE IF NOT EXISTS quiz_attempts (
+    id          TEXT PRIMARY KEY,
+    quizId      TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    userId      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    answers     TEXT NOT NULL DEFAULT '{}',
+    score       INTEGER NOT NULL DEFAULT 0,
+    total       INTEGER NOT NULL DEFAULT 0,
+    passed      INTEGER NOT NULL DEFAULT 0,
+    submittedAt TEXT NOT NULL,
+    UNIQUE(quizId, userId)
+  );
 `);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -774,4 +786,47 @@ export const attendanceCheckins = {
   },
 };
 
-export default { users, courses, lectures, enrollments, attendance, attendanceSessions, attendancePolicies, attendanceCheckins, invites, settings, quizzes };
+// ─── Quiz attempts ────────────────────────────────────────────────────────────
+
+export interface QuizAttempt {
+  id: string;
+  quizId: string;
+  userId: string;
+  answers: Record<number, number>; // questionIndex → chosen option index
+  score: number;
+  total: number;
+  passed: boolean;
+  submittedAt: string;
+}
+
+function parseAttempt(row: Record<string, unknown>): QuizAttempt {
+  return {
+    ...(row as unknown as QuizAttempt),
+    answers: JSON.parse((row.answers as string) || '{}'),
+    passed: !!(row.passed as number),
+  };
+}
+
+export const quizAttempts = {
+  getByUser(quizId: string, userId: string): QuizAttempt | undefined {
+    const row = db.prepare('SELECT * FROM quiz_attempts WHERE quizId=? AND userId=?').get(quizId, userId) as Record<string, unknown> | undefined;
+    return row ? parseAttempt(row) : undefined;
+  },
+  getByQuiz(quizId: string): QuizAttempt[] {
+    return (db.prepare('SELECT * FROM quiz_attempts WHERE quizId=? ORDER BY submittedAt DESC').all(quizId) as Record<string, unknown>[]).map(parseAttempt);
+  },
+  submit(data: Omit<QuizAttempt, 'id'>): QuizAttempt {
+    const existing = quizAttempts.getByUser(data.quizId, data.userId);
+    if (existing) {
+      db.prepare('UPDATE quiz_attempts SET answers=?,score=?,total=?,passed=?,submittedAt=? WHERE id=?')
+        .run(JSON.stringify(data.answers), data.score, data.total, data.passed ? 1 : 0, data.submittedAt, existing.id);
+      return { ...existing, ...data };
+    }
+    const id = generateId();
+    db.prepare('INSERT INTO quiz_attempts (id,quizId,userId,answers,score,total,passed,submittedAt) VALUES (?,?,?,?,?,?,?,?)')
+      .run(id, data.quizId, data.userId, JSON.stringify(data.answers), data.score, data.total, data.passed ? 1 : 0, data.submittedAt);
+    return { ...data, id };
+  },
+};
+
+export default { users, courses, lectures, enrollments, attendance, attendanceSessions, attendancePolicies, attendanceCheckins, invites, settings, quizzes, quizAttempts };
