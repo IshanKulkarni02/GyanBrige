@@ -90,7 +90,7 @@ export const registerGamification: FastifyPluginAsync = async (app) => {
       ? { enrollments: { some: { courseId } }, isActive: true }
       : { isActive: true };
     const users = await prisma.user.findMany({
-      where: { ...where, roles: { some: { role: 'STUDENT' } } },
+      where: { ...where, roles: { some: { role: Role.STUDENT } } },
       select: { id: true, name: true },
       take: 200,
     });

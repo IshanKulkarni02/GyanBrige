@@ -109,9 +109,11 @@ export const registerClubs: FastifyPluginAsync = async (app) => {
     const { method } = z
       .object({ method: z.enum(['NFC', 'QR', 'MANUAL']) })
       .parse(req.body);
-    return prisma.eventRsvp.update({
+    // Upsert so check-in works even if the user never explicitly RSVPd
+    return prisma.eventRsvp.upsert({
       where: { eventId_userId: { eventId: id, userId: me.id } },
-      data: { checkedInAt: new Date(), checkInMethod: method },
+      create: { eventId: id, userId: me.id, status: 'GOING', checkedInAt: new Date(), checkInMethod: method },
+      update: { checkedInAt: new Date(), checkInMethod: method },
     });
   });
 };

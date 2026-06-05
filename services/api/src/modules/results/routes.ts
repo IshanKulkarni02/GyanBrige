@@ -40,6 +40,14 @@ export const registerResults: FastifyPluginAsync = async (app) => {
   app.post('/', async (req) => {
     const me = await requireRole(req, Role.TEACHER, Role.ADMIN, Role.STAFF);
     const body = upsertSchema.parse(req.body);
+    // Teachers may only post results for courses they are assigned to
+    if (!me.roles.includes(Role.ADMIN) && !me.roles.includes(Role.STAFF)) {
+      const owns = await prisma.course.findFirst({
+        where: { id: body.courseId, teachers: { some: { id: me.id } } },
+        select: { id: true },
+      });
+      if (!owns) throw new AppError(403, 'FORBIDDEN', 'Not assigned to this course');
+    }
 
     const existing = await prisma.result.findUnique({
       where: {

@@ -144,6 +144,7 @@ export const registerApplications: FastifyPluginAsync = async (app) => {
     const wf = appli.form.workflow as unknown as Workflow;
     const history = (appli.history as unknown as HistoryEntry[]) ?? [];
     const stepIdx = history.length;
+    if (stepIdx >= wf.steps.length) throw new AppError(409, 'WORKFLOW_COMPLETE', 'All approval steps already completed');
     const currentStep = wf.steps[stepIdx]!;
     history.push({
       stepId: currentStep.id,

@@ -87,6 +87,7 @@ export const registerGoogleIntegration: FastifyPluginAsync = async (app) => {
         redirect_uri: callbackUrl(),
         grant_type: 'authorization_code',
       }),
+      signal: AbortSignal.timeout(8000),
     });
 
     if (!tokenRes.ok) {

@@ -68,7 +68,7 @@ export const registerLivestreams: FastifyPluginAsync = async (app) => {
     if (!isTeacher && !isStudent && !me.roles.includes(Role.ADMIN))
       throw new AppError(403, 'FORBIDDEN', 'Not enrolled');
 
-    if (!isTeacher && !me.roles.includes(Role.ADMIN)) {
+    if (!isTeacher && !me.roles.includes(Role.ADMIN) && !me.roles.includes(Role.STAFF)) {
       const decision = await canAttendOnline(me.id, lecture.course.subject.id);
       if (!decision.allowed) {
         throw new AppError(
