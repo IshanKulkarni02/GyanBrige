@@ -77,8 +77,16 @@ export const registerTests: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/', async (req) => {
-    await requireRole(req, Role.TEACHER, Role.ADMIN, Role.STAFF);
+    const me = await requireRole(req, Role.TEACHER, Role.ADMIN, Role.STAFF);
     const body = testCreateSchema.parse(req.body);
+    // Teachers may only create tests in courses they are assigned to
+    if (!me.roles.includes(Role.ADMIN) && !me.roles.includes(Role.STAFF)) {
+      const assigned = await prisma.course.findFirst({
+        where: { id: body.courseId, teachers: { some: { id: me.id } } },
+        select: { id: true },
+      });
+      if (!assigned) throw new AppError(403, 'FORBIDDEN', 'Not assigned to this course');
+    }
     return prisma.test.create({ data: body });
   });
 
@@ -165,11 +173,16 @@ export const registerTests: FastifyPluginAsync = async (app) => {
       .object({ questionId: z.string().uuid(), answer: z.unknown() })
       .parse(req.body);
 
-    const attempt = await prisma.testAttempt.findUnique({ where: { id } });
-    if (!attempt || attempt.studentId !== me.id)
-      throw new AppError(403, 'FORBIDDEN', 'Not your attempt');
+    const attempt = await prisma.testAttempt.findUnique({ where: { id }, include: { test: { select: { duration: true } } } });
+    if (!attempt) throw new AppError(404, 'NOT_FOUND', 'Attempt not found');
+    if (attempt.studentId !== me.id) throw new AppError(403, 'FORBIDDEN', 'Not your attempt');
     if (attempt.status !== AttemptStatus.IN_PROGRESS)
       throw new AppError(409, 'SUBMITTED', 'Attempt already submitted');
+    // Server-side time check — reject answers after duration elapsed
+    const elapsedSec = (Date.now() - attempt.startedAt.getTime()) / 1000;
+    if (elapsedSec > attempt.test.duration * 60 + 30) { // 30s grace for network latency
+      throw new AppError(409, 'TIME_EXPIRED', 'Submission window has closed');
+    }
 
     const q = await prisma.testQuestion.findUnique({ where: { id: body.questionId } });
     if (!q) throw new AppError(404, 'NOT_FOUND', 'Question not found');
@@ -197,10 +210,16 @@ export const registerTests: FastifyPluginAsync = async (app) => {
     const { id } = req.params as { id: string };
     const attempt = await prisma.testAttempt.findUnique({
       where: { id },
-      include: { answers: true },
+      include: { answers: true, test: { select: { duration: true } } },
     });
-    if (!attempt || attempt.studentId !== me.id)
-      throw new AppError(403, 'FORBIDDEN', 'Not your attempt');
+    if (!attempt) throw new AppError(404, 'NOT_FOUND', 'Attempt not found');
+    if (attempt.studentId !== me.id) throw new AppError(403, 'FORBIDDEN', 'Not your attempt');
+    // Enforce server-side time limit (allow 60s grace for auto-submit race)
+    const elapsedSec = (Date.now() - attempt.startedAt.getTime()) / 1000;
+    const durationSec = attempt.test.duration * 60;
+    if (elapsedSec > durationSec + 60) {
+      throw new AppError(409, 'TIME_EXPIRED', 'Test duration has elapsed');
+    }
     const score = attempt.answers.reduce((s, a) => s + (a.score ?? 0), 0);
     return prisma.testAttempt.update({
       where: { id },

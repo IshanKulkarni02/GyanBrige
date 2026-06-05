@@ -86,7 +86,8 @@ export default function NotesScreen() {
         {LANGS.map((l) => (
           <Pressable
             key={l.code}
-            onPress={() => switchLang(l.code)}
+            onPress={() => !busy && switchLang(l.code)}
+            disabled={busy}
             style={{
               paddingVertical: spacing.xs,
               paddingHorizontal: spacing.md,

@@ -39,6 +39,8 @@ export default function TeacherDashboard() {
         fetch(`/api/courses?teacherId=${me.id}`, { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
         fetch('/api/enrollments', { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
       ]);
+      if (!coursesRes.ok) throw new Error(`Courses API error: ${coursesRes.status}`);
+      if (!enrollmentsRes.ok) throw new Error(`Enrollments API error: ${enrollmentsRes.status}`);
       const { courses } = await coursesRes.json();
       const enrollData = await enrollmentsRes.json().catch(() => ({ enrollments: [] }));
       const courseList: CourseItem[] = courses ?? [];

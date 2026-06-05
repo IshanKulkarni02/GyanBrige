@@ -428,8 +428,11 @@ function QuizPanel({ quizzes, userId }: { quizzes: Quiz[]; userId: string }) {
         method: 'POST',
         body: JSON.stringify({ answers }),
       });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error);
+      if (!r.ok) {
+        const errBody = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(errBody.error ?? `Submit failed (${r.status})`);
+      }
+      const d = await r.json() as { attendanceCheckin?: boolean };
       setSubmitted(true);
       if (d.attendanceCheckin) setAttendanceMarked(true);
     } catch (e) {

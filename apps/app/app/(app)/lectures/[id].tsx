@@ -29,7 +29,8 @@ interface Lecture {
 }
 
 export default function LectureDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, t: tParam } = useLocalSearchParams<{ id: string; t?: string }>();
+  const seekToSec = tParam ? parseInt(tParam, 10) : null;
   const [lec, setLec] = useState<Lecture | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -258,6 +259,11 @@ export default function LectureDetail() {
             <Text style={{ ...typography.h3, color: c.text, marginTop: spacing.xs }}>
               {downloadedPath ? 'Downloaded' : 'Download lecture'}
             </Text>
+            {seekToSec != null && (
+              <Text style={{ color: c.accent, fontSize: 13, fontWeight: '600', marginTop: spacing.xs }}>
+                ↗ Referenced at {Math.floor(seekToSec / 60)}:{String(seekToSec % 60).padStart(2, '0')}
+              </Text>
+            )}
             <Text style={{ color: c.textMuted, fontSize: 12, marginTop: spacing.xs }}>
               {downloadedPath ? 'Available for offline playback.' : 'Save to your device for offline viewing. Link valid 2 hours.'}
             </Text>

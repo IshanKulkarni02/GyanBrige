@@ -72,7 +72,7 @@ export const PUT = logRoute(async function PUT(req: NextRequest, { params }: { p
   // Return new QR data URL if token was refreshed
   let qrDataUrl: string | undefined;
   if (updates.qrToken) {
-    const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost:3333';
+    const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || process.env.NEXT_PUBLIC_QR_HOST || 'localhost:3333';
     const proto = req.headers.get('x-forwarded-proto') || 'http';
     qrDataUrl = await QRCode.toDataURL(`${proto}://${host}/attend/${updates.qrToken}`, { width: 256, margin: 2 });
   }
