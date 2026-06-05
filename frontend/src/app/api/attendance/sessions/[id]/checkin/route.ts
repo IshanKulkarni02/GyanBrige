@@ -18,9 +18,15 @@ export const POST = logRoute(async function POST(req: NextRequest, { params }: {
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
   if (session.status !== 'active') return NextResponse.json({ error: 'Session is not active' }, { status: 400 });
 
+  const caller = requireAuth(req)!;
   const body = await req.json();
   const { studentId, method = 'manual', status = 'present', proofType } = body;
   if (!studentId) return NextResponse.json({ error: 'studentId required' }, { status: 400 });
+
+  // Students may only check themselves in; teachers/admins can check in anyone
+  if (caller.role === 'student' && caller.id !== studentId) {
+    return NextResponse.json({ error: 'Students can only check in themselves' }, { status: 403 });
+  }
 
   // Verify student is enrolled
   const enrollment = enrollments.get(studentId, session.courseId);

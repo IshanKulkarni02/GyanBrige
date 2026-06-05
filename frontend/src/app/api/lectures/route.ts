@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { lectures, courses } from '@/lib/db';
+import { requireAuth } from '@/lib/server-auth';
 import { logRoute } from '@/lib/logger';
 
 // GET all lectures or by course
@@ -21,8 +22,12 @@ export const GET = logRoute(async function GET(request: NextRequest) {
 }
 );
 
-// POST create new lecture
+// POST create new lecture — teachers and admins only
 export const POST = logRoute(async function POST(request: NextRequest) {
+  const caller = requireAuth(request);
+  if (!caller || caller.role === 'student') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   try {
     const body = await request.json();
     const { title, description, courseId, duration, notes, videoUrl } = body;
