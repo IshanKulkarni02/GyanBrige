@@ -63,7 +63,7 @@ async function computeStats(userId: string): Promise<Stats> {
   }
 
   const perfectQuizzes = attempts.filter((a) => {
-    const max = a.test.questions.reduce((s, q) => s + q.points, 0) || 1;
+    const max = (a.test?.questions ?? []).reduce((s, q) => s + q.points, 0) || 1;
     return (a.score ?? 0) / max >= 0.99;
   }).length;
 

@@ -45,8 +45,8 @@ async function getLearningProfile(studentId: string, courseIds: string[]): Promi
   const [flashMisses, attempts, attendance, totalLectures, upcoming] = await Promise.all([
     prisma.flashcard.findMany({
       where: {
-        deck: { courseId: { in: courseIds } },
-        reviews: { some: { studentId, quality: { lt: 3 } } },
+        lecture: { courseId: { in: courseIds } },
+        reviews: { some: { studentId, lastResult: { notIn: ['4', '5'] } } },
       },
       select: { front: true },
       take: 20,
