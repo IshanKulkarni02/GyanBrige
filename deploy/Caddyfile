@@ -1,0 +1,21 @@
+# GyanBrige host reverse proxy.
+# ngrok forwards the public HTTPS domain -> http://localhost:8080 (this server).
+#
+#   Run:  caddy run --config deploy/Caddyfile
+#
+# PHASE 1 (active): the public site is the self-contained Next.js frontend/.
+# It serves its own /api routes and uses a local JSON DB, so everything goes to
+# one upstream. The Fastify services (api/realtime/transcription) keep running on
+# localhost for the live-video stack, but are not publicly routed here yet.
+# Phase-2 routing for the Expo live UI is kept in deploy/Caddyfile.expo.
+{
+	auto_https off
+	admin off
+}
+
+:8080 {
+	encode gzip
+
+	# Main public site: Next.js frontend (login/dashboard/attendance/AI notes).
+	reverse_proxy localhost:3000
+}

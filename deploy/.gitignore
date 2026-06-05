@@ -1,0 +1,3 @@
+# Runtime logs / scratch from the deploy scripts
+*.log
+.api-test*

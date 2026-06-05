@@ -1,0 +1,32 @@
+# PHASE 2 reference: routing for the Expo Web live-video app + Fastify services.
+# These paths are designed NOT to collide with the Next.js frontend's own /api,
+# so the Expo live UI can be mounted under /live alongside the main site.
+#
+# To enable, fold these blocks into deploy/Caddyfile (inside the :8080 site) and
+# rebuild Expo with experiments.baseUrl = "/live" + the EXPO_PUBLIC_* below:
+#   EXPO_PUBLIC_API_URL=https://<host>/live-api
+#   EXPO_PUBLIC_REALTIME_URL=wss://<host>
+#   EXPO_PUBLIC_TRANSCRIPTION_URL=https://<host>/live-transcription
+#   EXPO_PUBLIC_LIVEKIT_URL=wss://gayanbrige-ur8nuadi.livekit.cloud
+
+# Fastify API (routes mounted under /api). Rewrite /live-api/* -> /api/* so it
+# does not clash with the Next.js frontend's /api.
+handle_path /live-api/* {
+	rewrite * /api{http.request.uri.path}
+	reverse_proxy localhost:4000
+}
+
+handle_path /live-transcription/* {
+	reverse_proxy localhost:4001
+}
+
+handle /socket.io/* {
+	reverse_proxy localhost:4002
+}
+
+# Expo Web SPA built with baseUrl=/live
+handle /live/* {
+	root * "C:/Users/Ishan/GyanBrige/apps/app/dist"
+	try_files {path} /live/index.html
+	file_server
+}
