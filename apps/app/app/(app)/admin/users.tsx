@@ -36,7 +36,11 @@ export default function AdminUsers() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  // Re-run search whenever q changes (debounced via 400ms timeout)
+  useEffect(() => {
+    const t = setTimeout(() => { void load(); }, q ? 400 : 0);
+    return () => clearTimeout(t);
+  }, [q]);
 
   const submit = async () => {
     if (!form.email.trim() || !form.name.trim() || !form.password) {

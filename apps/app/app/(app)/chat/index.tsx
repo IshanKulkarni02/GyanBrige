@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, FlatList, Pressable, ActivityIndicator } from 'react-native';
 import { Link } from 'expo-router';
 import { api } from '../../../lib/api';
-import { colors, spacing, radius } from '../../../lib/theme';
+import { useColors, spacing, radius } from '../../../lib/theme';
 
 interface Room {
   _id: string;
@@ -15,7 +15,7 @@ interface Room {
 export default function ChatRooms() {
   const [rows, setRows] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
-  const c = colors.light;
+  const c = useColors();
 
   useEffect(() => {
     api<Room[]>('/api/chat/rooms')

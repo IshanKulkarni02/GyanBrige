@@ -32,6 +32,7 @@ export default function MyResults() {
       style={{ backgroundColor: c.bg }}
       contentContainerStyle={{ padding: spacing.md }}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+      ListEmptyComponent={<Text style={{ color: c.textMuted, textAlign: 'center', marginTop: 32 }}>No results published yet.</Text>}
       renderItem={({ item }) => (
         <View
           style={{
