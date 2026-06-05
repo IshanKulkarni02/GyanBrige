@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { courses, lectures, enrollments, users } from '@/lib/db';
 import { requireAuth, requireAdmin } from '@/lib/server-auth';
 import { logRoute } from '@/lib/logger';
-import { requireAuth } from '@/lib/server-auth';
 
 // GET all courses or courses for a specific teacher
 export const GET = logRoute(async function GET(request: NextRequest) {
