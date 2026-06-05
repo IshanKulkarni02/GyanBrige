@@ -45,6 +45,7 @@ import { registerAccreditation } from './modules/accreditation/routes.js';
 import { registerGoogleIntegration } from './modules/integrations/google/routes.js';
 import { registerMentors } from './modules/mentors/routes.js';
 import { registerGamification } from './modules/gamification/routes.js';
+import { registerBatches } from './modules/batches/routes.js';
 import { auditPlugin } from './plugins/audit.js';
 import { errorPlugin } from './plugins/errors.js';
 
@@ -74,6 +75,7 @@ async function main() {
   await app.register(registerDepartments, { prefix: '/api/departments' });
   await app.register(registerSubjects, { prefix: '/api/subjects' });
   await app.register(registerCourses, { prefix: '/api/courses' });
+  await app.register(registerBatches, { prefix: '/api/batches' });
   await app.register(registerClassrooms, { prefix: '/api/classrooms' });
   await app.register(registerTimetable, { prefix: '/api/timetable' });
   await app.register(registerInvites, { prefix: '/api/invites' });
