@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 import { users } from '@/lib/db';
 import { requireAuth, requireAdmin } from '@/lib/server-auth';
 import { logRoute } from '@/lib/logger';
@@ -42,7 +43,8 @@ export const POST = logRoute(async function POST(request: NextRequest) {
     if (existing) {
       return NextResponse.json({ error: 'Email already in use' }, { status: 409 });
     }
-    const user = users.create({ name, email, password, role });
+    const hashed = await bcrypt.hash(password, 10);
+    const user = users.create({ name, email, password: hashed, role });
     const { password: _, ...safeUser } = user;
     return NextResponse.json({ success: true, user: safeUser }, { status: 201 });
   } catch {

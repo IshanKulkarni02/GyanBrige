@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { courses, lectures, enrollments, users } from '@/lib/db';
+import { requireAuth, requireAdmin } from '@/lib/server-auth';
 import { logRoute } from '@/lib/logger';
-import { requireAuth } from '@/lib/server-auth';
 
 // GET all courses or courses for a specific teacher
 export const GET = logRoute(async function GET(request: NextRequest) {
@@ -35,7 +35,7 @@ export const GET = logRoute(async function GET(request: NextRequest) {
 }
 );
 
-// POST create new course
+// POST create new course — teachers and admins only
 export const POST = logRoute(async function POST(request: NextRequest) {
   const caller = requireAuth(request);
   if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -49,6 +49,11 @@ export const POST = logRoute(async function POST(request: NextRequest) {
         { error: 'Name and teacherId are required' },
         { status: 400 }
       );
+    }
+
+    const teacher = users.getById(teacherId);
+    if (!teacher || teacher.role !== 'teacher') {
+      return NextResponse.json({ error: 'Invalid teacherId — must be an existing teacher' }, { status: 400 });
     }
 
     const newCourse = courses.create({

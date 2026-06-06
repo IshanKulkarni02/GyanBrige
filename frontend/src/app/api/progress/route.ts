@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { enrollments } from '@/lib/db';
-import { logRoute } from '@/lib/logger';
 import { requireAuth } from '@/lib/server-auth';
+import { logRoute } from '@/lib/logger';
 
 // POST mark lecture as complete
 export const POST = logRoute(async function POST(request: NextRequest) {
@@ -9,6 +9,9 @@ export const POST = logRoute(async function POST(request: NextRequest) {
   if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const { userId, courseId, lectureId } = await request.json();
+    if (caller.role === 'student' && caller.id !== userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     if (!userId || !courseId || !lectureId) {
       return NextResponse.json(

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/api';
 
 interface CourseItem { id: string; name: string; description: string; icon: string; color: string; lectureCount: number; }
 
@@ -36,8 +37,8 @@ export default function TeacherDashboard() {
   const loadData = async (me: { id: string; role: string }) => {
     try {
       const [coursesRes, enrollmentsRes] = await Promise.all([
-        fetch(`/api/courses?teacherId=${me.id}`, { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
-        fetch('/api/enrollments', { headers: { 'x-user-id': me.id, 'x-user-role': me.role } }),
+        authFetch(`/api/courses?teacherId=${me.id}`),
+        authFetch('/api/enrollments'),
       ]);
       if (!coursesRes.ok) throw new Error(`Courses API error: ${coursesRes.status}`);
       if (!enrollmentsRes.ok) throw new Error(`Enrollments API error: ${enrollmentsRes.status}`);
@@ -91,6 +92,10 @@ export default function TeacherDashboard() {
             { icon: '📤', label: 'Upload Lecture', href: '/dashboard/teacher/upload' },
             { icon: '📋', label: 'Attendance', href: '/dashboard/teacher/attendance' },
             { icon: '🎙️', label: 'Record', href: '/dashboard/teacher/record' },
+            { icon: '📅', label: 'Timetable', href: '/dashboard/teacher/timetable' },
+            { icon: '📝', label: 'Exams', href: '/dashboard/teacher/exams' },
+            { icon: '⭐', label: 'Feedback', href: '/dashboard/teacher/feedback' },
+            { icon: '📢', label: 'Grievances', href: '/dashboard/teacher/grievances' },
           ].map((item) => (
             <Link
               key={item.label}
