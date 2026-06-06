@@ -4,10 +4,16 @@ import { requireAuth } from '@/lib/server-auth';
 import { logRoute } from '@/lib/logger';
 import { settings, lectures } from '@/lib/db';
 
+function real(v: string | undefined | null): string {
+  // Treat absent, empty, or obviously-placeholder values as unset
+  if (!v || v.startsWith('your-') || v === 'wss://your-project.livekit.cloud') return '';
+  return v;
+}
+
 function getLivekitConfig() {
-  const url    = process.env.LIVEKIT_URL    ?? settings.get('livekit_url')    ?? '';
-  const key    = process.env.LIVEKIT_API_KEY    ?? settings.get('livekit_api_key')    ?? '';
-  const secret = process.env.LIVEKIT_API_SECRET ?? settings.get('livekit_api_secret') ?? '';
+  const url    = real(process.env.LIVEKIT_URL)        || real(settings.get('livekit_url'))        || '';
+  const key    = real(process.env.LIVEKIT_API_KEY)    || real(settings.get('livekit_api_key'))    || '';
+  const secret = real(process.env.LIVEKIT_API_SECRET) || real(settings.get('livekit_api_secret')) || '';
   return { url, key, secret };
 }
 

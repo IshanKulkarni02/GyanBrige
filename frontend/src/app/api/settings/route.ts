@@ -25,11 +25,15 @@ export const GET = logRoute(async function GET(request: NextRequest) {
     requireApproval:       all.requireApproval       === 'true',
     maxUploadSizeGb:       all.maxUploadSizeGb       || '25',
     transcriptionLanguage: all.transcriptionLanguage || 'auto',
-    // LiveKit
-    livekitUrl:       isAdmin ? (all.livekit_url       || '') : (all.livekit_url       ? '••••' : ''),
-    livekitApiKey:    isAdmin ? (all.livekit_api_key   || '') : (all.livekit_api_key   ? '••••' : ''),
-    livekitApiSecret: isAdmin ? (all.livekit_api_secret|| '') : (all.livekit_api_secret? '••••' : ''),
-    hasLivekit: !!(all.livekit_url && all.livekit_api_key && all.livekit_api_secret),
+    // LiveKit — check both DB and env vars
+    livekitUrl:       isAdmin ? (all.livekit_url       || process.env.LIVEKIT_URL        || '') : (all.livekit_url        || process.env.LIVEKIT_URL        ? '••••' : ''),
+    livekitApiKey:    isAdmin ? (all.livekit_api_key   || process.env.LIVEKIT_API_KEY    || '') : (all.livekit_api_key    || process.env.LIVEKIT_API_KEY    ? '••••' : ''),
+    livekitApiSecret: isAdmin ? (all.livekit_api_secret|| process.env.LIVEKIT_API_SECRET || '') : (all.livekit_api_secret || process.env.LIVEKIT_API_SECRET ? '••••' : ''),
+    hasLivekit: !!(
+      (all.livekit_url        || process.env.LIVEKIT_URL)        &&
+      (all.livekit_api_key    || process.env.LIVEKIT_API_KEY)    &&
+      (all.livekit_api_secret || process.env.LIVEKIT_API_SECRET)
+    ),
   });
 }
 );

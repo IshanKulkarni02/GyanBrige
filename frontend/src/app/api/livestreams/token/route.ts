@@ -11,9 +11,12 @@ export const POST = logRoute(async function POST(req: NextRequest) {
   const { lectureId, userId } = await req.json() as { lectureId: string; userId?: string };
   if (!lectureId) return NextResponse.json({ error: 'lectureId required' }, { status: 400 });
 
-  const url    = process.env.LIVEKIT_URL        ?? settings.get('livekit_url')        ?? '';
-  const key    = process.env.LIVEKIT_API_KEY    ?? settings.get('livekit_api_key')    ?? '';
-  const secret = process.env.LIVEKIT_API_SECRET ?? settings.get('livekit_api_secret') ?? '';
+  const real = (v: string | undefined | null) =>
+    (!v || v.startsWith('your-') || v === 'wss://your-project.livekit.cloud') ? '' : v;
+
+  const url    = real(process.env.LIVEKIT_URL)        || real(settings.get('livekit_url'))        || '';
+  const key    = real(process.env.LIVEKIT_API_KEY)    || real(settings.get('livekit_api_key'))    || '';
+  const secret = real(process.env.LIVEKIT_API_SECRET) || real(settings.get('livekit_api_secret')) || '';
 
   if (!url || !key || !secret) {
     return NextResponse.json(

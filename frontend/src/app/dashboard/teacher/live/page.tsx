@@ -19,6 +19,7 @@ export default function TeacherLivePage() {
   const [user,      setUser]      = useState<UserData | null>(null);
   const [courses,   setCourses]   = useState<Course[]>([]);
   const [loading,   setLoading]   = useState(true);
+  const [hasLivekit, setHasLivekit] = useState<boolean | null>(null);
 
   // Form
   const [title,     setTitle]     = useState('');
@@ -41,11 +42,15 @@ export default function TeacherLivePage() {
     if (parsed.role !== 'teacher') { router.push('/login'); return; }
     setUser(parsed);
 
-    authFetch(`/api/courses?teacherId=${parsed.id}`)
-      .then(r => r.json())
-      .then((d: { courses?: Course[] }) => setCourses(d.courses ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      authFetch(`/api/courses?teacherId=${parsed.id}`).then(r => r.json()),
+      authFetch('/api/settings').then(r => r.json()),
+    ]).then(([courseData, settingsData]: [{ courses?: Course[] }, { hasLivekit?: boolean }]) => {
+      setCourses(courseData.courses ?? []);
+      setHasLivekit(!!settingsData.hasLivekit);
+    }).catch(() => {
+      setHasLivekit(false);
+    }).finally(() => setLoading(false));
   }, [router]);
 
   // Step 1: create the lecture shell, then open broadcaster
@@ -112,6 +117,24 @@ export default function TeacherLivePage() {
         {/* ── SETUP ── */}
         {page === 'setup' && (
           <>
+            {/* LiveKit warning banner */}
+            {hasLivekit === false && (
+              <div className="rounded-xl bg-amber-500/10 border border-amber-500/25 p-4 flex gap-3">
+                <span className="text-2xl shrink-0">📡</span>
+                <div>
+                  <p className="text-amber-400 font-semibold text-sm mb-1">LiveKit not configured</p>
+                  <p className="text-white/50 text-sm mb-2">
+                    Live streaming needs a free LiveKit Cloud account. Get credentials at{' '}
+                    <strong className="text-white/70">livekit.io</strong>, then enter them in Admin → AI Settings.
+                  </p>
+                  <a href="/dashboard/admin/ai"
+                    className="inline-block text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition">
+                    Set up LiveKit →
+                  </a>
+                </div>
+              </div>
+            )}
+
             <div className="glass rounded-2xl p-6 space-y-5">
               <div>
                 <h2 className="font-semibold mb-1">New Live Lecture</h2>

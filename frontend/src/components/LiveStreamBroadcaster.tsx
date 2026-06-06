@@ -18,11 +18,11 @@ const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB per upload chunk
 export default function LiveStreamBroadcaster({
   lectureId, userId, onStreamStart, onStreamEnd, onRecordingSaved,
 }: Props) {
-  const previewRef    = useRef<HTMLVideoElement>(null);
-  const roomRef       = useRef<Room | null>(null);
-  const recorderRef   = useRef<MediaRecorder | null>(null);
-  const chunksRef     = useRef<Blob[]>([]);
-  const localStreamRef = useRef<MediaStream | null>(null);
+  const previewRef      = useRef<HTMLVideoElement>(null);
+  const roomRef         = useRef<Room | null>(null);
+  const recorderRef     = useRef<MediaRecorder | null>(null);
+  const chunksRef       = useRef<Blob[]>([]);
+  const localStreamRef  = useRef<MediaStream | null>(null);
 
   const [status,     setStatus]     = useState<BroadcastStatus>('idle');
   const [error,      setError]      = useState('');
@@ -31,6 +31,10 @@ export default function LiveStreamBroadcaster({
   const [sharing,    setSharing]    = useState(false);
   const [viewers,    setViewers]    = useState(0);
   const [uploadPct,  setUploadPct]  = useState(0);
+  const [camReady,   setCamReady]   = useState(false);
+  const [camError,   setCamError]   = useState('');
+
+  const isLivekitError = error.toLowerCase().includes('livekit');
 
   // Auth headers read from localStorage (client-only component)
   const authHeaders = useCallback((): Record<string, string> => {
@@ -40,6 +44,37 @@ export default function LiveStreamBroadcaster({
     } catch { return {}; }
   }, []);
 
+  // ── Start camera preview immediately on mount ──────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: true,
+        });
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        localStreamRef.current = stream;
+        if (previewRef.current) {
+          previewRef.current.srcObject = stream;
+        }
+        setCamReady(true);
+      } catch (e) {
+        if (!cancelled) {
+          setCamError(
+            e instanceof DOMException && e.name === 'NotAllowedError'
+              ? 'Camera permission denied. Please allow camera access in your browser.'
+              : e instanceof DOMException && e.name === 'NotFoundError'
+              ? 'No camera found. Please connect a webcam and try again.'
+              : 'Could not access camera: ' + (e instanceof Error ? e.message : String(e)),
+          );
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Start live stream (LiveKit) ─────────────────────────────────────────────
   const startStream = useCallback(async () => {
     setStatus('starting');
     setError('');
@@ -58,8 +93,8 @@ export default function LiveStreamBroadcaster({
       }
       const { token, livekitUrl } = await res.json() as { token: string; livekitUrl: string };
 
-      // 2. Create local tracks ourselves so we can also feed them to MediaRecorder
-      const { Room: LKRoom, RoomEvent, Track, createLocalTracks } = await import('livekit-client');
+      // 2. Connect LiveKit room using the already-captured local stream tracks
+      const { Room: LKRoom, RoomEvent, Track } = await import('livekit-client');
       const room = new LKRoom({ adaptiveStream: true, dynacast: true });
       roomRef.current = room;
 
@@ -69,24 +104,31 @@ export default function LiveStreamBroadcaster({
 
       await room.connect(livekitUrl, token);
 
-      const tracks = await createLocalTracks({ audio: true, video: { facingMode: 'user' } });
-      for (const t of tracks) await room.localParticipant.publishTrack(t);
+      // Publish the existing local stream tracks into LiveKit
+      if (localStreamRef.current) {
+        const videoTrack = localStreamRef.current.getVideoTracks()[0];
+        const audioTrack = localStreamRef.current.getAudioTracks()[0];
+        if (videoTrack) {
+          const { LocalVideoTrack } = await import('livekit-client');
+          const lkVideo = new LocalVideoTrack(videoTrack, undefined, false);
+          await room.localParticipant.publishTrack(lkVideo);
+        }
+        if (audioTrack) {
+          const { LocalAudioTrack } = await import('livekit-client');
+          const lkAudio = new LocalAudioTrack(audioTrack);
+          await room.localParticipant.publishTrack(lkAudio);
+        }
+      }
 
-      // 3. Wire camera preview
-      const camPub = room.localParticipant.getTrackPublication(Track.Source.Camera);
-      if (camPub?.track && previewRef.current) camPub.track.attach(previewRef.current);
-
-      // 4. Start MediaRecorder on the combined local stream
-      const mediaStream = new MediaStream(tracks.map(t => t.mediaStreamTrack));
-      localStreamRef.current = mediaStream;
-
+      // 3. Start MediaRecorder on the existing local stream
+      const mediaStream = localStreamRef.current ?? new MediaStream();
       const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
         ? 'video/webm;codecs=vp9,opus'
         : 'video/webm';
       const recorder = new MediaRecorder(mediaStream, { mimeType });
       recorderRef.current = recorder;
       recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      recorder.start(5000); // collect a chunk every 5 s so memory stays bounded
+      recorder.start(5000);
 
       setStatus('live');
       onStreamStart?.();
@@ -97,7 +139,6 @@ export default function LiveStreamBroadcaster({
   }, [lectureId, userId, authHeaders, onStreamStart, onStreamEnd]);
 
   const endStream = useCallback(async () => {
-    // Stop LiveKit room
     roomRef.current?.disconnect();
     roomRef.current = null;
     await fetch('/api/livestreams/rooms', {
@@ -106,7 +147,6 @@ export default function LiveStreamBroadcaster({
       body: JSON.stringify({ lectureId }),
     }).catch(() => {});
 
-    // Stop recorder and wait for final chunk
     const recorder = recorderRef.current;
     if (!recorder || recorder.state === 'inactive') {
       setStatus('idle');
@@ -122,21 +162,15 @@ export default function LiveStreamBroadcaster({
       recorder.stop();
     });
 
-    localStreamRef.current?.getTracks().forEach(t => t.stop());
-    localStreamRef.current = null;
-
     try {
       const blob = new Blob(chunksRef.current, { type: 'video/webm' });
       chunksRef.current = [];
       const videoUrl = await uploadRecording(blob, lectureId, authHeaders, setUploadPct);
-
-      // Save videoUrl on the lecture
       await fetch(`/api/lectures/${lectureId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ videoUrl }),
       });
-
       onStreamEnd?.();
       onRecordingSaved?.(videoUrl);
     } catch (e) {
@@ -146,14 +180,15 @@ export default function LiveStreamBroadcaster({
   }, [lectureId, authHeaders, onStreamEnd, onRecordingSaved]);
 
   const toggleMic = useCallback(async () => {
-    if (!roomRef.current) return;
-    await roomRef.current.localParticipant.setMicrophoneEnabled(muted);
+    // Toggle local stream audio tracks
+    localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = muted; });
+    if (roomRef.current) await roomRef.current.localParticipant.setMicrophoneEnabled(muted);
     setMuted(m => !m);
   }, [muted]);
 
   const toggleCam = useCallback(async () => {
-    if (!roomRef.current) return;
-    await roomRef.current.localParticipant.setCameraEnabled(camOff);
+    localStreamRef.current?.getVideoTracks().forEach(t => { t.enabled = camOff; });
+    if (roomRef.current) await roomRef.current.localParticipant.setCameraEnabled(camOff);
     setCamOff(c => !c);
   }, [camOff]);
 
@@ -163,6 +198,7 @@ export default function LiveStreamBroadcaster({
     setSharing(s => !s);
   }, [sharing]);
 
+  // Cleanup on unmount
   useEffect(() => () => {
     recorderRef.current?.state !== 'inactive' && recorderRef.current?.stop();
     roomRef.current?.disconnect();
@@ -186,10 +222,10 @@ export default function LiveStreamBroadcaster({
             </span>
           )}
           <span className="text-sm font-semibold text-white/80">
-            {status === 'idle'     ? 'Ready'                              :
-             status === 'starting' ? 'Starting…'                         :
+            {status === 'idle'     ? (camReady ? 'Camera ready' : 'Loading camera…') :
+             status === 'starting' ? 'Connecting…'                                   :
              status === 'live'     ? `${viewers} viewer${viewers !== 1 ? 's' : ''}` :
-             status === 'saving'   ? `Uploading… ${uploadPct}%`          :
+             status === 'saving'   ? `Uploading… ${uploadPct}%`                     :
              'Stream error'}
           </span>
         </div>
@@ -210,7 +246,7 @@ export default function LiveStreamBroadcaster({
         </div>
       )}
 
-      {/* Camera preview */}
+      {/* Camera preview — always visible */}
       <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
         <video
           ref={previewRef}
@@ -218,17 +254,36 @@ export default function LiveStreamBroadcaster({
           className={`w-full h-full object-cover ${camOff ? 'opacity-0' : ''}`}
           style={{ transform: 'scaleX(-1)' }}
         />
-        {status !== 'live' && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80">
-            {status === 'starting' || status === 'saving'
-              ? <div className="w-10 h-10 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
-              : <div className="text-center"><span className="text-5xl block mb-2">🎥</span><p className="text-white/40 text-sm">Preview will appear here</p></div>
-            }
+
+        {/* Overlay only when camera isn't ready */}
+        {!camReady && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/90">
+            {camError ? (
+              <div className="text-center px-6">
+                <span className="text-4xl block mb-3">🚫</span>
+                <p className="text-red-400 text-sm font-medium mb-1">Camera blocked</p>
+                <p className="text-white/50 text-xs">{camError}</p>
+              </div>
+            ) : (
+              <div className="text-center">
+                <div className="w-8 h-8 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin mx-auto mb-3" />
+                <p className="text-white/40 text-sm">Starting camera…</p>
+              </div>
+            )}
           </div>
         )}
+
+        {/* Cam disabled overlay (while live) */}
         {status === 'live' && camOff && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80">
             <span className="text-4xl">📵</span>
+          </div>
+        )}
+
+        {/* Starting / saving spinner overlay */}
+        {(status === 'starting' || status === 'saving') && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+            <div className="w-10 h-10 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
           </div>
         )}
       </div>
@@ -236,7 +291,11 @@ export default function LiveStreamBroadcaster({
       {/* Controls */}
       <div className="px-4 py-3 flex items-center gap-3">
         {(status === 'idle' || status === 'error') && (
-          <button onClick={startStream} className="flex-1 btn-primary py-2.5 flex items-center justify-center gap-2">
+          <button
+            onClick={startStream}
+            disabled={!camReady || !!camError}
+            className="flex-1 btn-primary py-2.5 flex items-center justify-center gap-2 disabled:opacity-40"
+          >
             🔴 Start Live Stream
           </button>
         )}
@@ -263,7 +322,34 @@ export default function LiveStreamBroadcaster({
         )}
       </div>
 
-      {status === 'error' && <p className="px-4 pb-3 text-xs text-red-400">{error}</p>}
+      {/* Error message */}
+      {status === 'error' && error && (
+        <div className="px-4 pb-4">
+          {isLivekitError ? (
+            <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-4">
+              <p className="text-red-400 text-sm font-semibold mb-1">📡 LiveKit not configured</p>
+              <p className="text-white/50 text-sm mb-3">
+                Live streaming requires a free LiveKit account. It takes 2 minutes to set up.
+              </p>
+              <ol className="text-white/40 text-xs space-y-1 mb-3 list-decimal list-inside">
+                <li>Go to <span className="text-emerald-400">livekit.io</span> → Sign up free</li>
+                <li>Create a project → copy the <strong className="text-white/60">URL, API Key, API Secret</strong></li>
+                <li>In GyanBrige: <strong className="text-white/60">Admin → AI Settings → LiveKit section</strong></li>
+                <li>Paste the credentials and click Save Settings</li>
+                <li>Come back here and start your stream 🎉</li>
+              </ol>
+              <a
+                href="/dashboard/admin/ai"
+                className="inline-block text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition"
+              >
+                Open Admin → AI Settings →
+              </a>
+            </div>
+          ) : (
+            <p className="text-xs text-red-400">{error}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

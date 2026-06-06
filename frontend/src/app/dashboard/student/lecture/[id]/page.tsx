@@ -349,7 +349,7 @@ export default function LecturePlayerPage() {
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                 <span className="text-sm font-semibold text-red-400">Teacher is live</span>
               </div>
-              <LiveStreamViewer lectureId={lecture.id} userId={user.id} />
+              <LiveStreamViewer lectureId={lecture.id} userId={user.id} courseId={lecture.courseId} />
             </div>
           )}
 
