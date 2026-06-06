@@ -17,6 +17,10 @@ export default function AISettingsPage() {
   const [openaiModel, setOpenaiModel] = useState('gpt-4o-mini');
   const [openaiKey, setOpenaiKey]   = useState('');
   const [hasKey, setHasKey]         = useState(false);
+  const [livekitUrl,       setLivekitUrl]       = useState('');
+  const [livekitApiKey,    setLivekitApiKey]    = useState('');
+  const [livekitApiSecret, setLivekitApiSecret] = useState('');
+  const [hasLivekit,       setHasLivekit]       = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -41,6 +45,10 @@ export default function AISettingsPage() {
       setOpenaiKey(data.openaiKey || '');   // admin sees full key
       setHasKey(!!data.hasOpenaiKey);
       setTranscriptionLanguage(data.transcriptionLanguage || 'auto');
+      setLivekitUrl(data.livekitUrl || '');
+      setLivekitApiKey(data.livekitApiKey || '');
+      setLivekitApiSecret(data.livekitApiSecret || '');
+      setHasLivekit(!!data.hasLivekit);
     } catch {
       toast.error('Failed to load settings');
     } finally {
@@ -53,10 +61,14 @@ export default function AISettingsPage() {
     try {
       const res = await authFetch('/api/settings', {
         method: 'PUT',
-        body: JSON.stringify({ useLocalAI, ollamaModel, openaiModel, openaiKey, transcriptionLanguage }),
+        body: JSON.stringify({
+          useLocalAI, ollamaModel, openaiModel, openaiKey, transcriptionLanguage,
+          livekitUrl, livekitApiKey, livekitApiSecret,
+        }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
       setHasKey(!!openaiKey);
+      setHasLivekit(!!(livekitUrl && livekitApiKey && livekitApiSecret));
       toast.success('Settings saved — all devices updated');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Save failed');
@@ -193,6 +205,55 @@ export default function AISettingsPage() {
             </div>
           </div>
         )}
+
+        {/* LiveKit */}
+        <div className="glass rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-xl font-semibold">📡 LiveKit — Live Streaming</h2>
+            {hasLivekit && <span className="text-xs text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full">✓ configured</span>}
+          </div>
+          <p className="text-white/50 text-sm mb-4">
+            Required for the &quot;Go Live&quot; feature. Get free credentials at{' '}
+            <a href="https://livekit.io" target="_blank" rel="noopener noreferrer" className="text-emerald-400 underline">livekit.io</a>
+            {' '}→ Cloud → Free tier.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-white/70 mb-1.5">
+                Server URL
+                {hasLivekit && <span className="ml-2 text-emerald-400 text-xs">✓ saved</span>}
+              </label>
+              <input
+                type="text"
+                value={livekitUrl}
+                onChange={e => setLivekitUrl(e.target.value)}
+                className="input-glass w-full font-mono text-sm"
+                placeholder="wss://your-project.livekit.cloud"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-white/70 mb-1.5">API Key</label>
+              <input
+                type="text"
+                value={livekitApiKey}
+                onChange={e => setLivekitApiKey(e.target.value)}
+                className="input-glass w-full font-mono text-sm"
+                placeholder="APIxxxxxxxxxxxxxxx"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-white/70 mb-1.5">API Secret</label>
+              <input
+                type="password"
+                value={livekitApiSecret}
+                onChange={e => setLivekitApiSecret(e.target.value)}
+                className="input-glass w-full font-mono text-sm"
+                placeholder={hasLivekit ? '••••••••  (enter to replace)' : 'your-api-secret'}
+              />
+              <p className="text-white/40 text-xs mt-2">Stored on the server — never sent to the browser after saving</p>
+            </div>
+          </div>
+        </div>
 
         {/* Save */}
         <button onClick={saveSettings} disabled={saving} className="btn-primary w-full py-4 text-lg disabled:opacity-50">

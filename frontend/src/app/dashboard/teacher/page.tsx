@@ -94,6 +94,7 @@ export default function TeacherDashboard() {
             { icon: '🎙️', label: 'Record', href: '/dashboard/teacher/record' },
             { icon: '📅', label: 'Timetable', href: '/dashboard/teacher/timetable' },
             { icon: '📝', label: 'Exams', href: '/dashboard/teacher/exams' },
+            { icon: '📌', label: 'Assignments', href: '/dashboard/teacher/assignments' },
             { icon: '⭐', label: 'Feedback', href: '/dashboard/teacher/feedback' },
             { icon: '📢', label: 'Grievances', href: '/dashboard/teacher/grievances' },
           ].map((item) => (
@@ -177,6 +178,14 @@ export default function TeacherDashboard() {
             </div>
             <h3 className="font-semibold mb-1">Record Lecture</h3>
             <p className="text-white/50 text-sm">Record new audio lecture</p>
+          </Link>
+          <Link href="/dashboard/teacher/live" className="glass glass-hover rounded-xl p-6 text-center">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center mx-auto mb-4 relative">
+              <span className="text-3xl">🔴</span>
+              <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-500 animate-pulse border border-black/40" />
+            </div>
+            <h3 className="font-semibold mb-1">Go Live</h3>
+            <p className="text-white/50 text-sm">Stream a live lecture</p>
           </Link>
         </div>
 

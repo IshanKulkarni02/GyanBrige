@@ -65,6 +65,7 @@ export default function Home() {
             <div className="hidden md:flex items-center gap-8">
               <Link href="#features" className="text-white/70 hover:text-white transition">Features</Link>
               <Link href="#about" className="text-white/70 hover:text-white transition">About</Link>
+              <Link href="#download" className="text-white/70 hover:text-white transition">Download</Link>
               <Link href="/login" className="btn-secondary text-sm">Login</Link>
               <Link href="/signup" className="btn-primary text-sm">Get Started</Link>
             </div>
@@ -76,6 +77,7 @@ export default function Home() {
         {mobileMenuOpen && (
           <div className="md:hidden glass border-t border-white/10 px-4 py-4 space-y-3">
             <Link href="#features" className="block text-white/70">Features</Link>
+            <Link href="#download" className="block text-white/70">Download</Link>
             <Link href="/login" className="block text-white/70">Login</Link>
             <Link href="/signup" className="btn-primary block text-center">Get Started</Link>
           </div>
@@ -185,6 +187,65 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Download Section */}
+      <section id="download" className="py-20 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              Download <span className="gradient-text">GyanBrige</span>
+            </h2>
+            <p className="text-white/60 max-w-2xl mx-auto">
+              Get the app on your preferred platform and start learning anywhere.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+            {[
+              {
+                platform: 'Android',
+                icon: '🤖',
+                desc: 'Android 8.0+',
+                color: 'from-green-500 to-emerald-500',
+                href: '/downloads/gyanbrige-android.apk',
+                badge: 'APK · v1.0',
+              },
+              {
+                platform: 'macOS',
+                icon: '🍎',
+                desc: 'macOS 12 Monterey+',
+                color: 'from-slate-400 to-gray-500',
+                href: '/downloads/GyanBrige-mac.dmg',
+                badge: 'DMG · v1.0',
+              },
+              {
+                platform: 'Windows',
+                icon: '🪟',
+                desc: 'Windows 10 / 11',
+                color: 'from-blue-500 to-indigo-500',
+                href: '/downloads/GyanBrige-Setup.exe',
+                badge: 'EXE · v1.0',
+              },
+            ].map((item) => (
+              <a
+                key={item.platform}
+                href={item.href}
+                download
+                className="glass glass-hover p-8 rounded-2xl flex flex-col items-center text-center gap-4 group"
+              >
+                <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${item.color} flex items-center justify-center`}>
+                  <span className="text-3xl">{item.icon}</span>
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold mb-1">{item.platform}</h3>
+                  <p className="text-white/50 text-sm">{item.desc}</p>
+                </div>
+                <span className="glass px-3 py-1 rounded-full text-xs text-white/60">{item.badge}</span>
+                <span className="btn-primary text-sm px-6 py-2 w-full">Download ↓</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="py-20 px-4">
         <div className="max-w-4xl mx-auto">
@@ -220,7 +281,7 @@ export default function Home() {
               <ul className="space-y-2 text-white/50">
                 <li><Link href="#features" className="hover:text-white transition">Features</Link></li>
                 <li><Link href="#" className="hover:text-white transition">Pricing</Link></li>
-                <li><Link href="#" className="hover:text-white transition">Mobile App</Link></li>
+                <li><Link href="#download" className="hover:text-white transition">Download App</Link></li>
               </ul>
             </div>
             <div>

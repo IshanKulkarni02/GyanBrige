@@ -360,6 +360,31 @@ db.exec(`
     aiConfidence     REAL,
     UNIQUE(submissionId, questionId)
   );
+
+  CREATE TABLE IF NOT EXISTS assignments (
+    id          TEXT PRIMARY KEY,
+    courseId    TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    dueDate     TEXT,
+    totalMarks  INTEGER NOT NULL DEFAULT 100,
+    status      TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('draft','active','closed')),
+    createdBy   TEXT NOT NULL REFERENCES users(id),
+    createdAt   TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS assignment_submissions (
+    id           TEXT PRIMARY KEY,
+    assignmentId TEXT NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+    studentId    TEXT NOT NULL REFERENCES users(id),
+    content      TEXT NOT NULL DEFAULT '',
+    status       TEXT NOT NULL DEFAULT 'submitted' CHECK(status IN ('submitted','graded')),
+    marksAwarded INTEGER,
+    feedback     TEXT NOT NULL DEFAULT '',
+    submittedAt  TEXT NOT NULL,
+    gradedAt     TEXT,
+    UNIQUE(assignmentId, studentId)
+  );
 `);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1184,4 +1209,105 @@ export const examAnswers = {
   },
 };
 
-export default { users, courses, lectures, enrollments, attendance, attendanceSessions, attendancePolicies, attendanceCheckins, invites, settings, quizzes, quizAttempts, timetable, grievances, feedbackStore, exams, examQuestions, examSubmissions, examAnswers };
+// ─── Assignments ──────────────────────────────────────────────────────────────
+
+export interface Assignment {
+  id: string;
+  courseId: string;
+  title: string;
+  description: string;
+  dueDate?: string;
+  totalMarks: number;
+  status: 'draft' | 'active' | 'closed';
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface AssignmentSubmission {
+  id: string;
+  assignmentId: string;
+  studentId: string;
+  content: string;
+  status: 'submitted' | 'graded';
+  marksAwarded?: number;
+  feedback: string;
+  submittedAt: string;
+  gradedAt?: string;
+}
+
+// Migration: create tables if they don't exist yet (handled in CREATE TABLE IF NOT EXISTS above)
+
+export const assignments = {
+  getAll(): Assignment[] {
+    return db.prepare('SELECT * FROM assignments ORDER BY createdAt DESC').all() as Assignment[];
+  },
+  getByCourse(courseId: string): Assignment[] {
+    return db.prepare('SELECT * FROM assignments WHERE courseId=? ORDER BY createdAt DESC').all(courseId) as Assignment[];
+  },
+  getById(id: string): Assignment | undefined {
+    return db.prepare('SELECT * FROM assignments WHERE id=?').get(id) as Assignment | undefined;
+  },
+  getByTeacher(teacherId: string): Assignment[] {
+    return db.prepare(`
+      SELECT a.* FROM assignments a
+      JOIN courses c ON c.id = a.courseId
+      WHERE c.teacherId = ?
+      ORDER BY a.createdAt DESC
+    `).all(teacherId) as Assignment[];
+  },
+  create(data: Omit<Assignment, 'id' | 'createdAt'>): Assignment {
+    const id = generateId();
+    const createdAt = new Date().toISOString();
+    db.prepare(
+      'INSERT INTO assignments (id,courseId,title,description,dueDate,totalMarks,status,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?,?)'
+    ).run(id, data.courseId, data.title, data.description, data.dueDate ?? null, data.totalMarks, data.status, data.createdBy, createdAt);
+    return { ...data, id, createdAt };
+  },
+  update(id: string, updates: Partial<Assignment>): Assignment | null {
+    const existing = assignments.getById(id);
+    if (!existing) return null;
+    const merged = { ...existing, ...updates };
+    db.prepare('UPDATE assignments SET title=?,description=?,dueDate=?,totalMarks=?,status=? WHERE id=?')
+      .run(merged.title, merged.description, merged.dueDate ?? null, merged.totalMarks, merged.status, id);
+    return merged;
+  },
+  delete(id: string): boolean {
+    return db.prepare('DELETE FROM assignments WHERE id=?').run(id).changes > 0;
+  },
+};
+
+export const assignmentSubmissions = {
+  getByAssignment(assignmentId: string): AssignmentSubmission[] {
+    return db.prepare('SELECT * FROM assignment_submissions WHERE assignmentId=? ORDER BY submittedAt DESC').all(assignmentId) as AssignmentSubmission[];
+  },
+  getByStudent(assignmentId: string, studentId: string): AssignmentSubmission | undefined {
+    return db.prepare('SELECT * FROM assignment_submissions WHERE assignmentId=? AND studentId=?').get(assignmentId, studentId) as AssignmentSubmission | undefined;
+  },
+  getById(id: string): AssignmentSubmission | undefined {
+    return db.prepare('SELECT * FROM assignment_submissions WHERE id=?').get(id) as AssignmentSubmission | undefined;
+  },
+  submit(assignmentId: string, studentId: string, content: string): AssignmentSubmission {
+    const existing = assignmentSubmissions.getByStudent(assignmentId, studentId);
+    const submittedAt = new Date().toISOString();
+    if (existing) {
+      db.prepare("UPDATE assignment_submissions SET content=?,submittedAt=?,status='submitted' WHERE id=?")
+        .run(content, submittedAt, existing.id);
+      return { ...existing, content, submittedAt, status: 'submitted' };
+    }
+    const id = generateId();
+    db.prepare(
+      "INSERT INTO assignment_submissions (id,assignmentId,studentId,content,status,feedback,submittedAt) VALUES (?,?,?,?,'submitted','',?)"
+    ).run(id, assignmentId, studentId, content, submittedAt);
+    return { id, assignmentId, studentId, content, status: 'submitted', feedback: '', submittedAt };
+  },
+  grade(id: string, marksAwarded: number, feedback: string): AssignmentSubmission | null {
+    const existing = assignmentSubmissions.getById(id);
+    if (!existing) return null;
+    const gradedAt = new Date().toISOString();
+    db.prepare("UPDATE assignment_submissions SET marksAwarded=?,feedback=?,status='graded',gradedAt=? WHERE id=?")
+      .run(marksAwarded, feedback, gradedAt, id);
+    return { ...existing, marksAwarded, feedback, status: 'graded', gradedAt };
+  },
+};
+
+export default { users, courses, lectures, enrollments, attendance, attendanceSessions, attendancePolicies, attendanceCheckins, invites, settings, quizzes, quizAttempts, timetable, grievances, feedbackStore, exams, examQuestions, examSubmissions, examAnswers, assignments, assignmentSubmissions };

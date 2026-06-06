@@ -1,10 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { authFetch } from '@/lib/api';
 import { toast } from 'sonner';
+import dynamic from 'next/dynamic';
+
+const WebcamAttentionMonitor = dynamic(() => import('@/components/WebcamAttentionMonitor'), { ssr: false });
+const LiveStreamViewer        = dynamic(() => import('@/components/LiveStreamViewer'),        { ssr: false });
 
 interface Chapter { startSec: number; title: string; }
 interface QuizQuestion {
@@ -46,13 +50,16 @@ export default function LecturePlayerPage() {
   const [activeChapter, setActiveChapter] = useState(0);
 
   // Online attendance: track watch progress + periodic attention check
-  const [watchedPct,      setWatchedPct]      = useState(0);       // % of video watched
-  const [onlineCheckedIn, setOnlineCheckedIn] = useState(false);   // sent online checkin
-  const [attentionPrompt, setAttentionPrompt] = useState(false);   // show "are you still watching?" modal
-  const [attentionTimer,  setAttentionTimer]  = useState(0);       // countdown seconds
-  const watchedSecsRef   = useRef<Set<number>>(new Set());
-  const attentionRef     = useRef<ReturnType<typeof setInterval>|null>(null);
+  const [watchedPct,      setWatchedPct]      = useState(0);
+  const [onlineCheckedIn, setOnlineCheckedIn] = useState(false);
+  const [attentionPrompt, setAttentionPrompt] = useState(false);
+  const [attentionTimer,  setAttentionTimer]  = useState(0);
+  const [webcamEnabled,   setWebcamEnabled]   = useState(false);
+  const [hasLiveStream,   setHasLiveStream]   = useState(false);
+  const watchedSecsRef    = useRef<Set<number>>(new Set());
+  const attentionRef      = useRef<ReturnType<typeof setInterval>|null>(null);
   const attentionCountRef = useRef<ReturnType<typeof setInterval>|null>(null);
+  const webcamConfirmedRef = useRef(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -89,6 +96,11 @@ export default function LecturePlayerPage() {
         const cr = await authFetch(`/api/courses/${lectureData.lecture.courseId}`);
         setCourse((await cr.json()).course);
       }
+      // Check for active live stream
+      authFetch(`/api/livestreams/rooms?lectureId=${lectureId}`)
+        .then(r => r.json())
+        .then((d: { room?: unknown }) => setHasLiveStream(!!d.room))
+        .catch(() => {});
       // Default to chapters if they exist, else notes
       if (!(lectureData.lecture?.chapters?.length)) setTab('notes');
     } catch { toast.error('Failed to load lecture'); }
@@ -178,11 +190,32 @@ export default function LecturePlayerPage() {
     return () => { if (attentionCountRef.current) clearInterval(attentionCountRef.current); };
   }, [attentionPrompt]);
 
-  const confirmAttention = () => {
+  const confirmAttention = useCallback((byWebcam = false) => {
     setAttentionPrompt(false);
     videoRef.current?.play();
-    toast.success('✓ Attention confirmed');
-  };
+    if (!byWebcam) toast.success('✓ Attention confirmed');
+  }, []);
+
+  // Called by WebcamAttentionMonitor when face is absent
+  const handleFaceAbsent = useCallback(() => {
+    if (videoRef.current && !videoRef.current.paused) {
+      videoRef.current.pause();
+      setAttentionTimer(30);
+      setAttentionPrompt(true);
+    }
+  }, []);
+
+  // Called by WebcamAttentionMonitor when face is present — auto-confirms modal
+  const handleFacePresent = useCallback(() => {
+    webcamConfirmedRef.current = true;
+    setAttentionPrompt(prev => {
+      if (prev) {
+        videoRef.current?.play();
+        return false;
+      }
+      return prev;
+    });
+  }, []);
 
   const markAsComplete = async () => {
     if (!user || !lecture || !course) return;
@@ -225,6 +258,15 @@ export default function LecturePlayerPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Webcam attention monitor (PIP, bottom-right) */}
+      <WebcamAttentionMonitor
+        active={webcamEnabled && videoDuration > 0}
+        checkIntervalMs={15 * 60 * 1000}
+        onFaceAbsent={handleFaceAbsent}
+        onFacePresent={handleFacePresent}
+        consecutiveThreshold={2}
+      />
+
       {/* Attention check modal */}
       {attentionPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -236,7 +278,7 @@ export default function LecturePlayerPage() {
             <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-5">
               <div className="h-full bg-amber-500 rounded-full transition-all" style={{width:`${(attentionTimer/30)*100}%`}} />
             </div>
-            <button onClick={confirmAttention} className="btn-primary w-full py-3">✓ Yes, I&apos;m here</button>
+            <button onClick={() => confirmAttention()} className="btn-primary w-full py-3">✓ Yes, I&apos;m here</button>
           </div>
         </div>
       )}
@@ -248,10 +290,23 @@ export default function LecturePlayerPage() {
             <Link href={course ? `/dashboard/student/course/${course.id}` : '/dashboard/student'} className="text-white/60 hover:text-white">← Back</Link>
             {course && <div className="flex items-center gap-2"><span className="text-xl">{course.icon}</span><span className="text-white/60 hidden sm:block">{course.name}</span></div>}
           </div>
-          {!completed
-            ? <button onClick={markAsComplete} className="btn-primary px-4 py-2 text-sm">✓ Mark Complete</button>
-            : <span className="text-emerald-400 text-sm flex items-center gap-1">✅ Completed</span>
-          }
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setWebcamEnabled(w => !w)}
+              title={webcamEnabled ? 'Disable attention monitor' : 'Enable webcam attention monitor'}
+              className={`px-3 py-2 text-xs rounded-lg border transition ${
+                webcamEnabled
+                  ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                  : 'border-white/20 text-white/50 hover:text-white hover:border-white/40'
+              }`}
+            >
+              📷 {webcamEnabled ? 'Cam On' : 'Enable Cam'}
+            </button>
+            {!completed
+              ? <button onClick={markAsComplete} className="btn-primary px-4 py-2 text-sm">✓ Mark Complete</button>
+              : <span className="text-emerald-400 text-sm flex items-center gap-1">✅ Completed</span>
+            }
+          </div>
         </div>
       </div>
 
@@ -286,6 +341,17 @@ export default function LecturePlayerPage() {
               </div>
             )}
           </div>
+
+          {/* Live stream banner + viewer */}
+          {hasLiveStream && user && (
+            <div className="px-5 pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-sm font-semibold text-red-400">Teacher is live</span>
+              </div>
+              <LiveStreamViewer lectureId={lecture.id} userId={user.id} />
+            </div>
+          )}
 
           {/* Title */}
           <div className="p-5">

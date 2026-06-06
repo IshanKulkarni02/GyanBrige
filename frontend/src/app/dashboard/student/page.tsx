@@ -111,6 +111,7 @@ export default function StudentDashboard() {
             { icon: '📊', label: 'Attendance',  href: '/dashboard/student/attendance' },
             { icon: '📅', label: 'Timetable',   href: '/dashboard/student/timetable' },
             { icon: '📝', label: 'Exams',       href: '/dashboard/student/exams' },
+            { icon: '📌', label: 'Assignments', href: '/dashboard/student/assignments' },
             { icon: '⭐', label: 'Feedback',    href: '/dashboard/student/feedback' },
             { icon: '📢', label: 'Grievances',  href: '/dashboard/student/grievances' },
           ].map((item) => (

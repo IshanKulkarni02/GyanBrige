@@ -25,6 +25,11 @@ export const GET = logRoute(async function GET(request: NextRequest) {
     requireApproval:       all.requireApproval       === 'true',
     maxUploadSizeGb:       all.maxUploadSizeGb       || '25',
     transcriptionLanguage: all.transcriptionLanguage || 'auto',
+    // LiveKit
+    livekitUrl:       isAdmin ? (all.livekit_url       || '') : (all.livekit_url       ? '••••' : ''),
+    livekitApiKey:    isAdmin ? (all.livekit_api_key   || '') : (all.livekit_api_key   ? '••••' : ''),
+    livekitApiSecret: isAdmin ? (all.livekit_api_secret|| '') : (all.livekit_api_secret? '••••' : ''),
+    hasLivekit: !!(all.livekit_url && all.livekit_api_key && all.livekit_api_secret),
   });
 }
 );
@@ -47,6 +52,11 @@ export const PUT = logRoute(async function PUT(request: NextRequest) {
   if ('requireApproval'      in body) settings.set('requireApproval',      String(!!body.requireApproval));
   if ('maxUploadSizeGb'      in body) settings.set('maxUploadSizeGb',      String(body.maxUploadSizeGb      || '25'));
   if ('transcriptionLanguage' in body) settings.set('transcriptionLanguage', String(body.transcriptionLanguage || 'auto'));
+
+  // LiveKit settings
+  if ('livekitUrl'       in body) settings.set('livekit_url',        String(body.livekitUrl       || ''));
+  if ('livekitApiKey'    in body) settings.set('livekit_api_key',    String(body.livekitApiKey    || ''));
+  if ('livekitApiSecret' in body) settings.set('livekit_api_secret', String(body.livekitApiSecret || ''));
 
   return NextResponse.json({ success: true });
 }

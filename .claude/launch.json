@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3333"],
+      "port": 3333,
+      "cwd": "/Users/ishan/projects/git hub/GyanBrige/frontend"
+    }
+  ]
+}
