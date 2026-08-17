@@ -138,6 +138,9 @@ const db = new Database(path.join(DATA_DIR, 'gyanbrige.db'));
 // Enable WAL mode for better concurrent read performance
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+// `next build` evaluates this module in ~19 parallel worker processes. Make each
+// one wait for the write lock instead of failing immediately with SQLITE_BUSY.
+db.pragma('busy_timeout = 15000');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -368,8 +371,12 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
 
-// Seed default data if tables are empty
-(function seed() {
+// Seed default data if tables are empty.
+// Wrapped in an IMMEDIATE transaction so that when many processes evaluate this
+// module at once (next build workers), exactly one acquires the write lock and
+// seeds; the others block on it, then re-read count > 0 and no-op. This removes
+// the TOCTOU race that produced "UNIQUE constraint failed: users.email".
+const seed = db.transaction(() => {
   const count = (db.prepare('SELECT COUNT(*) as n FROM users').get() as { n: number }).n;
   if (count > 0) return;
 
@@ -412,7 +419,8 @@ function generateId(): string {
   insertEnrollment.run('e2','u1','c2',50,JSON.stringify(['l4']),now);
   insertEnrollment.run('e3','u4','c1',33,JSON.stringify(['l1']),now);
   insertEnrollment.run('e4','u5','c1',100,JSON.stringify(['l1','l2','l3']),now);
-})();
+});
+seed.immediate();
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
